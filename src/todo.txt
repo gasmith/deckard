@@ -1,0 +1,24 @@
+Modeling
+--------
+
+Game state:
+ - Teams/partnerships
+   - Static or fluid
+ - Players
+   - Hands
+ - Global piles
+   - Draw
+   - Discard
+   - Blind
+ - Special piles
+   - Melds/books (map pile to player/partnership)
+   - Trick (map card to player)
+ - Current player
+ - Rule enforcement
+
+State machine for mutations
+ - Pure function over game state & input
+
+Observer
+ - Output to terminal/UI
+ - Feed into AI
