@@ -4,14 +4,14 @@ use rand::prelude::*;
 
 use crate::french::{Card, Deck, Rank};
 
+pub enum DrawError {
+    OutOfCards(String),
+}
+
 #[derive(Clone)]
 pub struct War {
     h1: Hand,
     h2: Hand,
-}
-
-pub enum DrawError {
-    OutOfCards(String),
 }
 
 impl War {

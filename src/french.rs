@@ -3,7 +3,13 @@ use std::fmt::Display;
 use itertools::iproduct;
 use rand::prelude::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Color {
+    Red,
+    Black,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Suit {
     Club,
     Diamond,
@@ -14,6 +20,13 @@ impl Suit {
     fn all_suits() -> &'static [Suit] {
         static SUITS: [Suit; 4] = [Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade];
         &SUITS
+    }
+
+    pub fn color(self) -> Color {
+        match self {
+            Suit::Diamond | Suit::Heart => Color::Red,
+            Suit::Club | Suit::Spade => Color::Black,
+        }
     }
 }
 impl Display for Suit {
@@ -28,7 +41,7 @@ impl Display for Suit {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rank {
     Ace,
     Two,
