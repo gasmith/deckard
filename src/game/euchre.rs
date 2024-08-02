@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap, ops::Index, sync::Arc};
+use std::{collections::HashMap, ops::Index, sync::Arc};
 
 use crate::french::{Card, Rank, Suit};
 
@@ -11,6 +11,16 @@ pub enum Dir {
 }
 
 impl Dir {
+    fn from_char(s: char) -> Option<Self> {
+        let dir = match s {
+            'N' => Dir::North,
+            'E' => Dir::East,
+            'S' => Dir::South,
+            'W' => Dir::West,
+            _ => return None,
+        };
+        Some(dir)
+    }
     fn next(self) -> Dir {
         match self {
             Dir::North => Dir::East,
@@ -50,11 +60,13 @@ enum Round {
     Deal(Deal),
     Play(Play),
 }
+#[derive(Debug)]
 struct Deal {
     hands: HashMap<Dir, Hand>,
     dealer: Dir,
     top: Card,
 }
+#[derive(Debug)]
 struct Play {
     hands: HashMap<Dir, Hand>,
     trump: Suit,
@@ -70,7 +82,6 @@ struct Hand {
 
 #[derive(Debug)]
 pub struct Trick {
-    pub lead: Suit,
     pub trump: Suit,
     pub cards: Vec<(Dir, Card)>,
 }
@@ -96,7 +107,13 @@ pub fn card_is_trump(trump: Suit, card_suit: Suit, card_rank: Rank) -> bool {
     card_suit == trump || matches!(card_rank, Rank::Jack) && card_suit.color() == trump.color()
 }
 
-pub fn card_value(lead: Suit, trump: Suit, card_suit: Suit, card_rank: Rank) -> u8 {
+pub fn card_value(
+    trump: Suit,
+    lead_suit: Suit,
+    lead_rank: Rank,
+    card_suit: Suit,
+    card_rank: Rank,
+) -> u8 {
     if card_is_trump(trump, card_suit, card_rank) {
         match card_rank {
             Rank::Nine => 7,
@@ -106,14 +123,14 @@ pub fn card_value(lead: Suit, trump: Suit, card_suit: Suit, card_rank: Rank) -> 
             Rank::Ace => 11,
             Rank::Jack => {
                 if card_suit == trump {
-                    12
-                } else {
                     13
+                } else {
+                    12
                 }
             }
             _ => unreachable!(),
         }
-    } else if card_suit == lead {
+    } else if card_suit == lead_suit && !card_is_trump(trump, lead_suit, lead_rank) {
         match card_rank {
             Rank::Nine => 1,
             Rank::Ten => 2,
@@ -172,22 +189,75 @@ impl Deal {
 }
 
 impl Trick {
-    fn winner(&self) -> Option<Dir> {
-        if self.cards.len() != 4 {
-            None
-        } else {
-            let dir = self
-                .cards
-                .iter()
-                .max_by_key(|(_, card)| {
-                    let Card::RankSuit(rank, suit) = card else {
-                        panic!("no jokers!");
-                    };
-                    card_value(self.lead, self.trump, *suit, *rank)
-                })
-                .expect("non-empty")
-                .0;
-            Some(dir)
+    fn new(leader: Dir, card: Card, trump: Suit) -> Self {
+        Self {
+            trump,
+            cards: vec![(leader, card)],
         }
+    }
+
+    fn leader(&self) -> Dir {
+        self.cards[0].0
+    }
+
+    fn lead(&self) -> Card {
+        self.cards[0].1
+    }
+
+    fn winner(&self) -> Option<Dir> {
+        assert!(!self.cards.is_empty()); // by construction
+        let Card::RankSuit(lead_rank, lead_suit) = self.lead() else {
+            panic!("no jokers!");
+        };
+        let dir = self
+            .cards
+            .iter()
+            .max_by_key(|(_, card)| {
+                let Card::RankSuit(rank, suit) = card else {
+                    panic!("no jokers!");
+                };
+                card_value(self.trump, lead_suit, lead_rank, *suit, *rank)
+            })
+            .expect("non-empty")
+            .0;
+        Some(dir)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn trick(trump: char, cards: &[&str]) -> Trick {
+        let trump = Suit::from_char(trump).unwrap();
+        let cards = cards
+            .iter()
+            .map(|s| {
+                let mut chars = s.chars();
+                let dir = chars.next().and_then(Dir::from_char).unwrap();
+                let rank = chars.next().and_then(Rank::from_char).unwrap();
+                let suit = chars.next().and_then(Suit::from_char).unwrap();
+                assert!(chars.next().is_none());
+                (dir, Card::RankSuit(rank, suit))
+            })
+            .collect();
+        Trick { trump, cards }
+    }
+
+    #[test]
+    fn test_trick_winner() {
+        assert_eq!(trick('♠', &["N9♥"]).winner(), Some(Dir::North));
+        assert_eq!(
+            trick('♠', &["N9♥", "ET♥", "SJ♥", "WQ♥"]).winner(),
+            Some(Dir::West)
+        );
+        assert_eq!(
+            trick('♠', &["NJ♠", "EK♠", "SA♣", "WJ♣"]).winner(),
+            Some(Dir::North)
+        );
+        assert_eq!(
+            trick('♠', &["NQ♠", "EK♠", "SA♣", "WJ♣"]).winner(),
+            Some(Dir::West)
+        );
     }
 }

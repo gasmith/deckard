@@ -22,6 +22,17 @@ impl Suit {
         &SUITS
     }
 
+    pub fn from_char(s: char) -> Option<Self> {
+        let suit = match s {
+            '♣' | 'C' => Suit::Club,
+            '♦' | 'D' => Suit::Diamond,
+            '♥' | 'H' => Suit::Heart,
+            '♠' | 'S' => Suit::Spade,
+            _ => return None,
+        };
+        Some(suit)
+    }
+
     pub fn color(self) -> Color {
         match self {
             Suit::Diamond | Suit::Heart => Color::Red,
@@ -75,6 +86,26 @@ impl Rank {
             Rank::King,
         ];
         &RANKS
+    }
+
+    pub fn from_char(s: char) -> Option<Self> {
+        let suit = match s {
+            'A' => Rank::Ace,
+            '2' => Rank::Two,
+            '3' => Rank::Three,
+            '4' => Rank::Four,
+            '5' => Rank::Five,
+            '6' => Rank::Six,
+            '7' => Rank::Seven,
+            '8' => Rank::Eight,
+            '9' => Rank::Nine,
+            'T' => Rank::Ten,
+            'J' => Rank::Jack,
+            'Q' => Rank::Queen,
+            'K' => Rank::King,
+            _ => return None,
+        };
+        Some(suit)
     }
 }
 impl Display for Rank {
