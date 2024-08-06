@@ -1,7 +1,16 @@
+//! The game of euchre.
+//!
+//! Todo:
+//!
+//!  - Feature flag for no-trump
+//!  - Feature flag for stick-the-dealer
+
 use std::{collections::HashMap, ops::Index, sync::Arc};
 
-use crate::french::{Card, Rank, Suit};
+mod card;
+pub use card::{Card, Rank, Suit};
 
+/// Table position, represented as cardinal direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Dir {
     North,
@@ -9,7 +18,6 @@ pub enum Dir {
     South,
     West,
 }
-
 impl Dir {
     fn from_char(s: char) -> Option<Self> {
         let dir = match s {
@@ -40,150 +48,256 @@ impl Dir {
     }
 }
 
+/// A collection of players, indexed by table position.
 struct Players(HashMap<Dir, Arc<dyn Player>>);
+
 impl Index<Dir> for Players {
     type Output = Arc<dyn Player>;
-
     fn index(&self, index: Dir) -> &Self::Output {
         self.0.get(&index).expect("all players present")
     }
 }
 
+/// A game consists of a set of players.
 struct Game {
     players: Players,
+    next_dealer: Dir,
     ns_points: u8,
     ew_points: u8,
 }
 
+/// The main state machine for the round.
+///
+/// A new round is initiated by a deal into the `BidTop` state. The players
+/// then bid for the top card. If a bid is made, the top card is replaces a
+/// card in the dealer's hand, and the round progresses to `Play`.
+///
+/// Otherwise, the state machine advances to `BidOther`, where players bid for
+/// any suit other than that of the top card. The dealer is required to choose
+/// a suit, if no other player will.
 #[derive(Debug)]
 enum Round {
     Deal(Deal),
+    BidTop(Deal),
+    BidOther(Deal),
     Play(Play),
 }
+
+impl Round {
+    fn next(self, players: &Players) -> Result<Self, Error> {
+        match self {
+            Round::Deal(deal) => {
+                deal.deal(players);
+                Ok(Round::BidTop(deal))
+            }
+            Round::BidTop(deal) => match deal.bid_top(players)? {
+                Some(bid) => {
+                    deal.notify(players, Event::Bid(bid));
+                    deal.dealer_pick_up_top(players, bid).map(Round::Play)
+                }
+                None => Ok(Round::BidOther(deal)),
+            },
+            Round::BidOther(deal) => {
+                let bid = deal.bid_other(players)?;
+                deal.notify(players, Event::Bid(bid));
+                Ok(Round::Play(deal.into_play(bid)))
+            }
+            Round::Play(_) => todo!(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Deal {
-    hands: HashMap<Dir, Hand>,
+    hands: HashMap<Dir, Vec<Card>>,
     dealer: Dir,
     top: Card,
 }
 #[derive(Debug)]
 struct Play {
-    hands: HashMap<Dir, Hand>,
-    trump: Suit,
+    hands: HashMap<Dir, Vec<Card>>,
+    tricks: HashMap<Dir, Vec<Trick>>,
     dealer: Dir,
-    maker: Dir,
+    bid: Bid,
 }
 
-#[derive(Debug)]
-struct Hand {
-    cards: Vec<Card>,
-    tricks: Vec<Trick>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Trick {
     pub trump: Suit,
     pub cards: Vec<(Dir, Card)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Event {
-    InvalidPlay(String),
-    TrumpDeclared(Dir, Suit),
-    TrickComplete(Dir, Trick),
+    Bid(Bid),
+    Trick(Dir, Trick),
 }
 
 pub trait Player {
-    fn deal(&self, dealer: Dir, cards: Vec<Card>);
-    fn bid_top(&self, dealer: Dir, top: Card) -> bool;
-    fn bid_other(&self, dealer: Dir) -> Option<Suit>;
-    fn pick_up(&self, dir: Dir, trump: Suit) -> Card;
+    /// The `dealer` deals a new hand of `cards` to this player, and reveals
+    /// the top card.
+    fn deal(&self, dealer: Dir, cards: Vec<Card>, top: Card);
+
+    /// This player is allowed to bid on the suit displayed on the upturned
+    /// card. All preceding players seated clockwise from the dealer have
+    /// passed.
+    ///
+    /// If this function returns true, the player is accepting a contract to
+    /// win 3 or more tricks, and the card will go into the dealer's hand.
+    fn bid_top(&self, dealer: Dir, top: Card) -> Option<Contract>;
+
+    /// This player is allowed to bid on any other suit other than that of the
+    /// upturned card offered in [`bid_top`]. All preceding players seated
+    /// clockwise from the dealer have passed.
+    ///
+    /// The dealer is required to bid.
+    fn bid_other(&self, dealer: Dir) -> Option<(Suit, Contract)>;
+
+    /// The dealer takes up the top card, and discards a card. The card must
+    /// come from the player's hand.
+    fn pick_up_top(&self, card: Card, bid: Bid) -> Card;
+
+    /// Leads a new trick. The card must come from the player's hand.
     fn lead(&self) -> Card;
+
+    /// Plays a card into a trick. The card must come from the player's hand.
     fn follow(&self, trick: &Trick) -> Card;
-    fn event(&self, event: Event);
+
+    /// A notification of an event that all players can see.
+    fn notify(&self, event: &Event);
+
+    /// Indicates that the player has made an invalid play.
+    ///
+    /// The implementation may return true, if a retry is desired. Otherwise,
+    /// the invalid play will be converted into a fatal error.
+    fn invalid_play(&self, invalid: InvalidPlay) -> bool;
 }
 
-pub fn card_is_trump(trump: Suit, card_suit: Suit, card_rank: Rank) -> bool {
-    card_suit == trump || matches!(card_rank, Rank::Jack) && card_suit.color() == trump.color()
+#[derive(Debug, Clone, Copy)]
+enum Contract {
+    Partner,
+    Alone,
 }
 
-pub fn card_value(
-    trump: Suit,
-    lead_suit: Suit,
-    lead_rank: Rank,
-    card_suit: Suit,
-    card_rank: Rank,
-) -> u8 {
-    if card_is_trump(trump, card_suit, card_rank) {
-        match card_rank {
-            Rank::Nine => 7,
-            Rank::Ten => 8,
-            Rank::Queen => 9,
-            Rank::King => 10,
-            Rank::Ace => 11,
-            Rank::Jack => {
-                if card_suit == trump {
-                    13
-                } else {
-                    12
-                }
-            }
-            _ => unreachable!(),
-        }
-    } else if card_suit == lead_suit && !card_is_trump(trump, lead_suit, lead_rank) {
-        match card_rank {
-            Rank::Nine => 1,
-            Rank::Ten => 2,
-            Rank::Jack => 3,
-            Rank::Queen => 4,
-            Rank::King => 5,
-            Rank::Ace => 6,
-            _ => unreachable!(),
-        }
-    } else {
-        0
-    }
+#[derive(Debug, Clone, Copy)]
+struct Bid {
+    dir: Dir,
+    suit: Suit,
+    contract: Contract,
 }
 
-enum Bid {
-    Top(Dir),
-    Other(Dir, Suit),
+#[derive(Debug, Clone, Copy)]
+enum InvalidPlay {
+    /// The dealer is required to choose a suit after all players have passed.
+    DealerMustBid,
+
+    /// The player doesn't actually hold the card they attempted to play.
+    CardNotHeld,
+
+    /// Cannot bid the same suit as the top card.
+    CannotBidTopSuit,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Error {
+    InvalidPlay(Dir, InvalidPlay),
 }
 
 impl Deal {
-    fn bid(self, players: &Players) -> Bid {
+    fn deal(&self, players: &Players) {
+        for dir in self.dealer.next_n(4) {
+            let player = &players[dir];
+            let hand = self.hands.get(&dir).expect("hands");
+            player.deal(self.dealer, hand.clone(), self.top);
+        }
+    }
+
+    fn notify(&self, players: &Players, event: Event) {
+        for dir in self.dealer.next_n(4) {
+            players[dir].notify(&event)
+        }
+    }
+
+    fn bid_top(&self, players: &Players) -> Result<Option<Bid>, Error> {
         let mut dir = self.dealer.next();
         for _ in 0..4 {
             let player = &players[dir];
-            let hand = self.hands.get(&dir).expect("hands");
-            player.deal(self.dealer, hand.cards.clone());
-            dir = dir.next();
-        }
-        for _ in 0..4 {
-            let player = &players[dir];
-            if player.bid_top(self.dealer, self.top) {
-                return Bid::Top(dir);
+            if let Some(contract) = player.bid_top(self.dealer, self.top) {
+                let bid = Bid {
+                    dir,
+                    suit: self.top.suit,
+                    contract,
+                };
+                return Ok(Some(bid));
             }
             dir = dir.next();
         }
-        for _ in 0..4 {
-            let player = &players[dir];
-            // Need to validate that the suit doesn't match the top card.
-            // Probably ought to move this around, and force the player to call
-            // back into the game, so that we can do validation inside the
-            // callback, rather than validating the return value.
-            if let Some(card) = player.bid_other(self.dealer) {
-                return Bid::Other(dir, card);
-            }
-            dir = dir.next();
-        }
-        let player = &players[self.dealer];
+        Ok(None)
+    }
+
+    fn dealer_pick_up_top(mut self, players: &Players, bid: Bid) -> Result<Play, Error> {
+        let hand = self.hands.get_mut(&self.dealer).unwrap();
+        hand.push(self.top);
+        let dealer = &players[self.dealer];
         loop {
-            // Need more nuanced types for reporting invalid play.
-            player.event(Event::InvalidPlay("Dealer must choose a suit".into()));
-            if let Some(card) = player.bid_other(self.dealer) {
-                return Bid::Other(self.dealer, card);
+            let card = dealer.pick_up_top(self.top, bid);
+            match hand.iter().position(|c| *c == card) {
+                Some(index) => {
+                    // Discard the card from the dealer's hand.
+                    hand.remove(index);
+                    break;
+                }
+                None => {
+                    // The dealer attempted to discard a card they do not hold.
+                    let invalid = InvalidPlay::CardNotHeld;
+                    if !dealer.invalid_play(invalid) {
+                        return Err(Error::InvalidPlay(self.dealer, invalid));
+                    }
+                }
             }
+        }
+        Ok(self.into_play(bid))
+    }
+
+    fn bid_other(&self, players: &Players) -> Result<Bid, Error> {
+        for dir in self.dealer.next_n(4) {
+            let player = &players[dir];
+            loop {
+                match player.bid_other(self.dealer) {
+                    Some((suit, contract)) => {
+                        if suit == self.top.suit {
+                            let invalid = InvalidPlay::CannotBidTopSuit;
+                            if !player.invalid_play(invalid) {
+                                return Err(Error::InvalidPlay(dir, invalid));
+                            }
+                        }
+                        return Ok(Bid {
+                            dir,
+                            suit,
+                            contract,
+                        });
+                    }
+                    None if dir == self.dealer => {
+                        let invalid = InvalidPlay::DealerMustBid;
+                        if !player.invalid_play(invalid) {
+                            return Err(Error::InvalidPlay(dir, invalid));
+                        }
+                    }
+                    None => {
+                        break;
+                    }
+                }
+            }
+        }
+        unreachable!();
+    }
+
+    fn into_play(self, bid: Bid) -> Play {
+        Play {
+            hands: self.hands,
+            tricks: HashMap::new(),
+            dealer: self.dealer,
+            bid,
         }
     }
 }
@@ -206,18 +320,10 @@ impl Trick {
 
     fn winner(&self) -> Option<Dir> {
         assert!(!self.cards.is_empty()); // by construction
-        let Card::RankSuit(lead_rank, lead_suit) = self.lead() else {
-            panic!("no jokers!");
-        };
         let dir = self
             .cards
             .iter()
-            .max_by_key(|(_, card)| {
-                let Card::RankSuit(rank, suit) = card else {
-                    panic!("no jokers!");
-                };
-                card_value(self.trump, lead_suit, lead_rank, *suit, *rank)
-            })
+            .max_by_key(|(_, card)| card.value(self.trump, self.lead()))
             .expect("non-empty")
             .0;
         Some(dir)
@@ -238,7 +344,7 @@ mod test {
                 let rank = chars.next().and_then(Rank::from_char).unwrap();
                 let suit = chars.next().and_then(Suit::from_char).unwrap();
                 assert!(chars.next().is_none());
-                (dir, Card::RankSuit(rank, suit))
+                (dir, Card { rank, suit })
             })
             .collect();
         Trick { trump, cards }
