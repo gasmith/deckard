@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 pub use crate::french::Suit;
 
@@ -55,6 +55,27 @@ impl Display for Rank {
 pub struct Card {
     pub rank: Rank,
     pub suit: Suit,
+}
+
+impl Display for Card {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.rank, self.suit)
+    }
+}
+
+impl FromStr for Card {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars();
+        let rank = chars.next().and_then(Rank::from_char).ok_or(())?;
+        let suit = chars.next().and_then(Suit::from_char).ok_or(())?;
+        if chars.next().is_none() {
+            Ok(Card { rank, suit })
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl Card {
