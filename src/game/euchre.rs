@@ -5,7 +5,12 @@
 //!  - Feature flag for no-trump
 //!  - Feature flag for stick-the-dealer
 
-use std::{collections::HashMap, ops::Index, sync::Arc};
+use std::collections::{hash_map::Values, HashMap};
+use std::ops::Index;
+use std::sync::Arc;
+
+use itertools::iproduct;
+use rand::prelude::*;
 
 mod card;
 pub use card::{Card, Rank, Suit};
@@ -29,6 +34,7 @@ impl Dir {
         };
         Some(dir)
     }
+
     fn next(self) -> Dir {
         match self {
             Dir::North => Dir::East,
@@ -41,10 +47,34 @@ impl Dir {
     fn next_n(mut self, n: usize) -> Vec<Dir> {
         let mut order = vec![];
         for _ in 0..n {
-            order.push(self);
             self = self.next();
+            order.push(self);
         }
         order
+    }
+}
+
+/// Team specification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Team {
+    NorthSouth,
+    EastWest,
+}
+impl From<Dir> for Team {
+    fn from(value: Dir) -> Self {
+        match value {
+            Dir::North | Dir::South => Team::NorthSouth,
+            Dir::East | Dir::West => Team::EastWest,
+        }
+    }
+}
+
+impl Team {
+    fn other(self) -> Team {
+        match self {
+            Team::NorthSouth => Team::EastWest,
+            Team::EastWest => Team::NorthSouth,
+        }
     }
 }
 
@@ -58,12 +88,72 @@ impl Index<Dir> for Players {
     }
 }
 
+impl Players {
+    fn iter(&self) -> Values<'_, Dir, Arc<dyn Player>> {
+        self.0.values()
+    }
+}
+
+pub struct Deck {
+    cards: Vec<Card>,
+}
+impl Default for Deck {
+    fn default() -> Self {
+        let cards = iproduct!(Rank::all_ranks(), Suit::all_suits())
+            .map(|(&rank, &suit)| Card { rank, suit })
+            .collect();
+        Self { cards }
+    }
+}
+impl Deck {
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+
+    pub fn shuffle<R: Rng + ?Sized>(&mut self, rng: &mut R) {
+        self.cards.shuffle(rng);
+    }
+
+    pub fn take(&mut self, n: usize) -> Vec<Card> {
+        let idx = self.cards.len().saturating_sub(n);
+        self.cards.split_off(idx)
+    }
+}
+
 /// A game consists of a set of players.
 struct Game {
     players: Players,
     next_dealer: Dir,
-    ns_points: u8,
-    ew_points: u8,
+    points: HashMap<Team, u8>,
+}
+
+impl Game {
+    pub fn new(players: Players) -> Self {
+        Self {
+            players,
+            next_dealer: Dir::North,
+            points: HashMap::from([(Team::NorthSouth, 0), (Team::EastWest, 0)]),
+        }
+    }
+
+    fn run_round<R: Rng + ?Sized>(&mut self, rng: &mut R) -> Result<Outcome, Error> {
+        let mut deck = Deck::default();
+        deck.shuffle(rng);
+        let round = Round::new(self.next_dealer, deck);
+        let outcome = round.run(&self.players)?;
+        let points = self.points.get_mut(&outcome.team).expect("init points");
+        *points += outcome.points;
+        Ok(outcome)
+    }
+
+    fn winner(&self) -> Option<Team> {
+        for (team, points) in &self.points {
+            if *points >= 10 {
+                return Some(*team);
+            }
+        }
+        None
+    }
 }
 
 /// The main state machine for the round.
@@ -81,9 +171,35 @@ enum Round {
     BidTop(Deal),
     BidOther(Deal),
     Play(Play),
+    Finish(Outcome),
+}
+
+#[derive(Debug)]
+struct Outcome {
+    team: Team,
+    points: u8,
 }
 
 impl Round {
+    pub fn new(dealer: Dir, mut deck: Deck) -> Self {
+        let hands = dealer
+            .next_n(4)
+            .into_iter()
+            .map(|dir| (dir, deck.take(5)))
+            .collect();
+        let top = deck.take(1)[0];
+        Round::Deal(Deal { hands, dealer, top })
+    }
+
+    pub fn run(mut self, players: &Players) -> Result<Outcome, Error> {
+        loop {
+            self = self.next(players)?;
+            if let Round::Finish(outcome) = self {
+                return Ok(outcome);
+            }
+        }
+    }
+
     fn next(self, players: &Players) -> Result<Self, Error> {
         match self {
             Round::Deal(deal) => {
@@ -92,17 +208,28 @@ impl Round {
             }
             Round::BidTop(deal) => match deal.bid_top(players)? {
                 Some(bid) => {
-                    deal.notify(players, Event::Bid(bid));
+                    notify(players, Event::Bid(bid));
                     deal.dealer_pick_up_top(players, bid).map(Round::Play)
                 }
                 None => Ok(Round::BidOther(deal)),
             },
             Round::BidOther(deal) => {
                 let bid = deal.bid_other(players)?;
-                deal.notify(players, Event::Bid(bid));
+                notify(players, Event::Bid(bid));
                 Ok(Round::Play(deal.into_play(bid)))
             }
-            Round::Play(_) => todo!(),
+            Round::Play(mut play) => {
+                let mut trick = play.lead_trick(players)?;
+                play.follow_trick(players, &mut trick)?;
+                let winner = trick.winner();
+                notify(players, Event::Trick(winner, trick.clone()));
+                play.collect_trick(winner, trick);
+                Ok(match play.outcome() {
+                    Some(outcome) => Round::Finish(outcome),
+                    None => Round::Play(play),
+                })
+            }
+            Round::Finish(_) => Ok(self),
         }
     }
 }
@@ -117,7 +244,7 @@ struct Deal {
 struct Play {
     hands: HashMap<Dir, Vec<Card>>,
     tricks: HashMap<Dir, Vec<Trick>>,
-    dealer: Dir,
+    leader: Dir,
     bid: Bid,
 }
 
@@ -158,10 +285,11 @@ pub trait Player {
     fn pick_up_top(&self, card: Card, bid: Bid) -> Card;
 
     /// Leads a new trick. The card must come from the player's hand.
-    fn lead(&self) -> Card;
+    fn lead_trick(&self) -> Card;
 
-    /// Plays a card into a trick. The card must come from the player's hand.
-    fn follow(&self, trick: &Trick) -> Card;
+    /// Plays a card into an opened trick. The card must come from the player's
+    /// hand. The player's card must follow the lead suit when possible.
+    fn follow_trick(&self, trick: &Trick) -> Card;
 
     /// A notification of an event that all players can see.
     fn notify(&self, event: &Event);
@@ -174,33 +302,52 @@ pub trait Player {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Contract {
+pub enum Contract {
     Partner,
     Alone,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Bid {
-    dir: Dir,
-    suit: Suit,
-    contract: Contract,
+pub struct Bid {
+    pub dir: Dir,
+    pub suit: Suit,
+    pub contract: Contract,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum InvalidPlay {
+pub enum InvalidPlay {
     /// The dealer is required to choose a suit after all players have passed.
     DealerMustBid,
+
+    /// Cannot bid the same suit as the top card.
+    CannotBidTopSuit,
 
     /// The player doesn't actually hold the card they attempted to play.
     CardNotHeld,
 
-    /// Cannot bid the same suit as the top card.
-    CannotBidTopSuit,
+    /// The player must follow the lead card for this trick.
+    MustFollowLead,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Error {
     InvalidPlay(Dir, InvalidPlay),
+}
+
+/// Discards a card from the hand, returning true if the card was found.
+fn discard(hand: &mut Vec<Card>, card: Card) -> bool {
+    if let Some(index) = hand.iter().position(|c| *c == card) {
+        hand.remove(index);
+        true
+    } else {
+        false
+    }
+}
+
+fn notify(players: &Players, event: Event) {
+    for player in players.iter() {
+        player.notify(&event)
+    }
 }
 
 impl Deal {
@@ -209,12 +356,6 @@ impl Deal {
             let player = &players[dir];
             let hand = self.hands.get(&dir).expect("hands");
             player.deal(self.dealer, hand.clone(), self.top);
-        }
-    }
-
-    fn notify(&self, players: &Players, event: Event) {
-        for dir in self.dealer.next_n(4) {
-            players[dir].notify(&event)
         }
     }
 
@@ -241,22 +382,15 @@ impl Deal {
         let dealer = &players[self.dealer];
         loop {
             let card = dealer.pick_up_top(self.top, bid);
-            match hand.iter().position(|c| *c == card) {
-                Some(index) => {
-                    // Discard the card from the dealer's hand.
-                    hand.remove(index);
-                    break;
-                }
-                None => {
-                    // The dealer attempted to discard a card they do not hold.
-                    let invalid = InvalidPlay::CardNotHeld;
-                    if !dealer.invalid_play(invalid) {
-                        return Err(Error::InvalidPlay(self.dealer, invalid));
-                    }
-                }
+            if discard(hand, card) {
+                return Ok(self.into_play(bid));
+            }
+            // The dealer attempted to discard a card they do not hold.
+            let invalid = InvalidPlay::CardNotHeld;
+            if !dealer.invalid_play(invalid) {
+                return Err(Error::InvalidPlay(self.dealer, invalid));
             }
         }
-        Ok(self.into_play(bid))
     }
 
     fn bid_other(&self, players: &Players) -> Result<Bid, Error> {
@@ -296,37 +430,132 @@ impl Deal {
         Play {
             hands: self.hands,
             tricks: HashMap::new(),
-            dealer: self.dealer,
+            leader: self.dealer.next(),
             bid,
         }
     }
 }
 
+impl Play {
+    fn trump(&self) -> Suit {
+        self.bid.suit
+    }
+
+    fn lead_trick(&mut self, players: &Players) -> Result<Trick, Error> {
+        let hand = self.hands.get_mut(&self.leader).unwrap();
+        let leader = &players[self.leader];
+        loop {
+            let card = leader.lead_trick();
+            if discard(hand, card) {
+                return Ok(Trick::new(self.trump(), self.leader, card));
+            }
+            let invalid = InvalidPlay::CardNotHeld;
+            if !leader.invalid_play(invalid) {
+                return Err(Error::InvalidPlay(self.leader, invalid));
+            }
+        }
+    }
+
+    fn follow_trick(&mut self, players: &Players, trick: &mut Trick) -> Result<(), Error> {
+        for dir in self.leader.next_n(3) {
+            let hand = self.hands.get_mut(&dir).unwrap();
+            let player = &players[dir];
+            loop {
+                let card = player.follow_trick(trick);
+                if !hand.contains(&card) {
+                    let invalid = InvalidPlay::CardNotHeld;
+                    if !player.invalid_play(invalid) {
+                        return Err(Error::InvalidPlay(dir, invalid));
+                    }
+                } else if !trick.is_following_lead(hand, &card) {
+                    let invalid = InvalidPlay::MustFollowLead;
+                    if !player.invalid_play(invalid) {
+                        return Err(Error::InvalidPlay(dir, invalid));
+                    }
+                } else {
+                    discard(hand, card);
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn collect_trick(&mut self, winner: Dir, trick: Trick) {
+        self.leader = winner;
+        self.tricks
+            .get_mut(&winner)
+            .expect("init tricks")
+            .push(trick);
+    }
+
+    fn outcome(&self) -> Option<Outcome> {
+        let mut total = 0;
+        let mut bidder = 0;
+        let mut defender = 0;
+        let team = Team::from(self.bid.dir);
+        for (dir, tricks) in &self.tricks {
+            total += tricks.len();
+            if Team::from(*dir) == team {
+                bidder += tricks.len();
+            } else {
+                defender += tricks.len();
+            }
+        }
+        if total == 5 {
+            match (bidder, self.bid.contract) {
+                (5, Contract::Alone) => Some(Outcome { team, points: 4 }),
+                (5, Contract::Partner) => Some(Outcome { team, points: 2 }),
+                (3 | 4, _) => Some(Outcome { team, points: 1 }),
+                _ => Some(Outcome {
+                    team: team.other(),
+                    points: 2,
+                }),
+            }
+        } else if defender > 2 {
+            Some(Outcome {
+                team: team.other(),
+                points: 2,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 impl Trick {
-    fn new(leader: Dir, card: Card, trump: Suit) -> Self {
+    fn new(trump: Suit, leader: Dir, card: Card) -> Self {
         Self {
             trump,
             cards: vec![(leader, card)],
         }
     }
 
-    fn leader(&self) -> Dir {
+    pub fn leader(&self) -> Dir {
         self.cards[0].0
     }
 
-    fn lead(&self) -> Card {
+    pub fn lead_card(&self) -> Card {
         self.cards[0].1
     }
 
-    fn winner(&self) -> Option<Dir> {
-        assert!(!self.cards.is_empty()); // by construction
-        let dir = self
-            .cards
+    pub fn winner(&self) -> Dir {
+        self.cards
             .iter()
-            .max_by_key(|(_, card)| card.value(self.trump, self.lead()))
+            .max_by_key(|(_, card)| card.value(self.trump, self.lead_card()))
             .expect("non-empty")
-            .0;
-        Some(dir)
+            .0
+    }
+
+    /// Validate that the player is following the lead suit where possible.
+    pub fn is_following_lead(&self, hand: &[Card], card: &Card) -> bool {
+        let lead = self.lead_card();
+        card.is_following(self.trump, lead)
+            || !hand.iter().any(|c| c.is_following(self.trump, lead))
+    }
+
+    fn play(&mut self, dir: Dir, card: Card) {
+        self.cards.push((dir, card));
     }
 }
 
@@ -352,18 +581,18 @@ mod test {
 
     #[test]
     fn test_trick_winner() {
-        assert_eq!(trick('♠', &["N9♥"]).winner(), Some(Dir::North));
+        assert_eq!(trick('♠', &["N9♥"]).winner(), Dir::North);
         assert_eq!(
             trick('♠', &["N9♥", "ET♥", "SJ♥", "WQ♥"]).winner(),
-            Some(Dir::West)
+            Dir::West
         );
         assert_eq!(
             trick('♠', &["NJ♠", "EK♠", "SA♣", "WJ♣"]).winner(),
-            Some(Dir::North)
+            Dir::North
         );
         assert_eq!(
             trick('♠', &["NQ♠", "EK♠", "SA♣", "WJ♣"]).winner(),
-            Some(Dir::West)
+            Dir::West
         );
     }
 }

@@ -17,7 +17,7 @@ pub enum Suit {
     Spade,
 }
 impl Suit {
-    fn all_suits() -> &'static [Suit] {
+    pub fn all_suits() -> &'static [Suit] {
         static SUITS: [Suit; 4] = [Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade];
         &SUITS
     }
