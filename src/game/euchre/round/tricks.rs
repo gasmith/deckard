@@ -92,6 +92,7 @@ impl Tricks {
         }
         if total_tricks - makers_tricks >= 3 {
             // Euchred! No need to keep playing.
+            println!("Euchred!");
             let defenders = makers.other();
             Some(Outcome::new(defenders, 2))
         } else if total_tricks == 5 {
@@ -159,7 +160,7 @@ mod test {
     fn build_players(players: [(char, ScriptedPlayer); 4]) -> Players {
         Players::new(
             players
-                .map(|(dir, p)| (Dir::from_char(dir).unwrap(), p.as_player()))
+                .map(|(dir, p)| (Dir::from_char(dir).unwrap(), p.into_player()))
                 .iter()
                 .cloned()
                 .collect(),

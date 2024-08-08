@@ -1,27 +1,31 @@
 //! Robot player
 //!
 
-use std::{
-    collections::{
-        hash_map::Entry::{Occupied, Vacant},
-        HashMap, HashSet,
-    },
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use itertools::Itertools;
 
 use super::{Card, Contract, Dir, Event, InvalidPlay, Player, Suit, Trick};
 use crate::game::euchre::{Rank, Team};
 
+const MIN_Z_SCORE: u8 = 8;
+const MIN_LONER_Z_SCORE: u8 = 11;
+
+#[derive(Debug, Clone)]
+struct Hand {
+    cards: Vec<Card>,
+    trump: Option<Suit>,
+    by_suit: HashMap<Suit, Vec<Card>>,
+}
+
+/// State provided during the deal.
 #[derive(Debug)]
-struct Round {
-    // Round state
+struct Deal {
     dealer: Dir,
     dealer_team: Team,
     top: Card,
-    cards: Vec<Card>,
-    contract: Option<Contract>,
+    hand: Hand,
 }
 
 #[derive(Debug)]
@@ -31,7 +35,8 @@ struct Inner {
     team: Team,
 
     // Round state
-    round: Option<Round>,
+    deal: Option<Deal>,
+    contract: Option<Contract>,
 
     // Game state
     our_score: u8,
@@ -59,7 +64,9 @@ impl Player for Robot {
 
     fn pick_up_top(&self, top: Card) -> Card {
         let mut inner = self.0.lock().unwrap();
-        inner.pick_up_top(top)
+        let card = inner.pick_up_top(top);
+        println!("{:?}: Discard {card}", inner.dir);
+        card
     }
 
     fn lead_trick(&self) -> Card {
@@ -87,20 +94,19 @@ impl Robot {
         Robot(Mutex::new(Inner::new(dir)))
     }
 
-    pub fn as_player(self) -> Arc<dyn Player> {
+    pub fn into_player(self) -> Arc<dyn Player> {
         Arc::new(self)
     }
 }
 
-// Builds a map from non-trump suits to a set of card positions.
-fn suit_map(cards: &[Card], trump: Suit) -> HashMap<Suit, Vec<usize>> {
-    let mut suits: HashMap<_, Vec<usize>> = HashMap::new();
-    for (idx, card) in cards.iter().enumerate() {
-        if !card.is_trump(trump) {
-            suits.entry(card.suit).or_default().push(idx)
-        }
-    }
-    suits
+fn least_valuable(mut cards: Vec<Card>, trump: Suit) -> Card {
+    cards.sort_unstable_by_key(|c| c.value(trump, *c));
+    cards[0]
+}
+
+fn most_valuable(mut cards: Vec<Card>, trump: Suit) -> Card {
+    cards.sort_unstable_by_key(|c| c.value(trump, *c));
+    cards.pop().expect("non-empty")
 }
 
 impl Inner {
@@ -108,25 +114,36 @@ impl Inner {
         Self {
             dir,
             team: Team::from(dir),
-            round: None,
+            deal: None,
+            contract: None,
             our_score: 0,
             their_score: 0,
         }
     }
+
     fn deal(&mut self, dealer: Dir, cards: Vec<Card>, top: Card) {
         println!(
             "{:?}: {}",
             self.dir,
             cards.iter().map(|c| c.to_string()).join(", ")
         );
-        self.round.replace(Round::new(dealer, cards, top));
+        self.deal.replace(Deal::new(dealer, cards, top));
+        self.contract = None;
     }
 
     fn bid_top(&self) -> Option<bool> {
-        let round = self.round.as_ref().expect("no deal?");
-        let score = self.z_score(round.top.suit, Some(round.top));
-        println!("{:?}: z-score {}", self.dir, score);
-        if score >= 9 {
+        let deal = self.deal.as_ref().expect("no deal?");
+        let score = self.z_score(deal.top.suit, Some(deal.top));
+        println!("{:?}: z-score for {} is {}", self.dir, deal.top.suit, score);
+        if score >= MIN_Z_SCORE {
+            Some(score >= MIN_LONER_Z_SCORE)
+        } else if score + 2 >= MIN_Z_SCORE
+            && deal.dealer == self.dir
+            && Suit::all_suits()
+                .iter()
+                .all(|s| *s == deal.top.suit || score > self.z_score(*s, None))
+        {
+            println!("{:?}: Better than getting stuck...", self.dir);
             Some(false)
         } else {
             None
@@ -134,94 +151,74 @@ impl Inner {
     }
 
     fn bid_other(&self) -> Option<(Suit, bool)> {
-        let round = self.round.as_ref().expect("no deal?");
+        let deal = self.deal.as_ref().expect("no deal?");
         let mut best = (0, Suit::Club);
         for &suit in Suit::all_suits() {
-            if suit != round.top.suit {
+            if suit != deal.top.suit {
                 let score = self.z_score(suit, None);
-                if score >= 9 {
-                    return Some((suit, false));
+                println!("{:?}: z-score for {} is {}", self.dir, suit, score);
+                if score >= MIN_Z_SCORE {
+                    return Some((suit, score >= MIN_LONER_Z_SCORE));
                 } else if score > best.0 {
                     best = (score, suit);
                 }
             }
         }
-        if self.dir == round.dealer {
+        if self.dir == deal.dealer {
             Some((best.1, false))
         } else {
             None
         }
     }
 
-    // An arbitrary rubrik based on Eric Zalas's "z-score".
     fn z_score(&self, trump: Suit, top: Option<Card>) -> u8 {
-        let mut suits: HashSet<Suit> = HashSet::new();
-        let mut score = 0;
-
-        fn card_score(card: Card, trump: Suit) -> u8 {
-            match (card.is_trump(trump), card.rank) {
-                (true, Rank::Jack) => 3,
-                (true, _) => 2,
-                (false, Rank::Ace) => 1,
-                _ => 0,
+        let deal = self.deal.as_ref().expect("no deal?");
+        let mut hand = deal.hand.clone_with_trump(Some(trump));
+        if top.is_some() && deal.dealer_team == self.team {
+            // Top card goes to our team.
+            hand.push(deal.top);
+            if deal.dealer == self.dir {
+                // Dealer knows what to discard (e.g., for voids).
+                hand.dealer_discard();
             }
+            hand.z_score(None)
+        } else {
+            // No top card, or it goes to opponent team.
+            hand.z_score(top)
         }
+    }
 
-        // Intrinsic card values.
-        let round = self.round.as_ref().expect("no deal?");
-        for card in &round.cards {
-            suits.insert(card.suit);
-            score += card_score(*card, trump);
-        }
-
-        // Voids.
-        score += match suits.len() {
-            1 => 3,
-            2 => 2,
-            3 => 1,
-            _ => 0,
-        };
-
-        // Top card.
-        if let Some(top) = top {
-            let delta = card_score(top, trump);
-            if round.dealer_team == self.team {
-                score += delta;
-            } else {
-                score = score.saturating_sub(delta);
+    fn notify(&mut self, event: &Event) {
+        match event {
+            Event::Bid(contract) => {
+                let deal = self.deal.as_mut().expect("no deal?");
+                deal.hand.set_trump(Some(contract.suit));
+                self.contract = Some(*contract);
             }
+            Event::Round(outcome) => {
+                if outcome.team == self.team {
+                    self.our_score += outcome.points;
+                } else {
+                    self.their_score += outcome.points;
+                }
+            }
+            Event::Trick(_) => (),
         }
-
-        score
     }
 
     fn pick_up_top(&mut self, top: Card) -> Card {
-        let round = self.round.as_mut().expect("no deal?");
-        round.cards.push(top);
-
-        // Void a suit, if possible.
-        let mut suits: HashMap<Suit, Option<usize>> = HashMap::new();
-        for (idx, card) in round.cards.iter().enumerate() {
-            match suits.entry(card.suit) {
-                Occupied(mut e) => _ = e.get_mut().take(),
-                Vacant(e) => _ = e.insert(Some(idx)),
-            };
-        }
-        for (_, idx) in suits {
-            if let Some(idx) = idx {
-                return round.cards.remove(idx);
-            }
-        }
-
-        // Can't void a suit, just remove the weakest card.
-        round.cards.sort_unstable_by_key(|c| c.value(top.suit, *c));
-        round.cards.remove(0)
+        let trump = top.suit;
+        let hand = self.deal.as_mut().map(|d| &mut d.hand).expect("no deal?");
+        assert!(hand.trump().is_some_and(|s| s == trump));
+        hand.push(top);
+        hand.dealer_discard()
     }
 
     fn lead_trick(&mut self) -> Card {
-        let round = self.round.as_mut().expect("no deal?");
-        if round.cards.len() == 1 {
-            return round.cards.remove(0);
+        let deal = self.deal.as_mut().expect("no deal?");
+        let hand = &mut deal.hand;
+        if hand.len() == 1 {
+            return hand.must_discard_first();
         }
 
         // First trick, defending
@@ -240,63 +237,66 @@ impl Inner {
         //  - Ace with one other card
         //  - Least card
 
-        let contract = round.contract.unwrap();
+        let contract = self.contract.expect("no contract?");
         let trump = contract.suit;
         if Team::from(contract.maker) == self.team {
             // Right bower
             let right = Card::new(Rank::Jack, trump);
-            if let Some(idx) = round.cards.iter().position(|c| *c == right) {
-                return round.cards.remove(idx);
+            if let Some(card) = hand.discard(right) {
+                return card;
             }
 
-            round.cards.sort_unstable_by_key(|c| c.value(trump, *c));
+            hand.sort();
 
-            // Least trump on the first round, best trump on subsequent.
-            if round.cards.len() == 5 {
-                if let Some(idx) = round.cards.iter().position(|c| c.is_trump(trump)) {
-                    return round.cards.remove(idx);
+            if hand.len() == 5 {
+                if let Some(card) = hand.iter().find(|c| c.is_trump(trump)) {
+                    // Least trump on the first round
+                    return hand.must_discard(*card);
                 }
-            } else if let Some(idx) = round.cards.iter().rposition(|c| c.is_trump(trump)) {
-                return round.cards.remove(idx);
+            } else if let Some(card) = hand.iter().rev().find(|c| c.is_trump(trump)) {
+                // Best trump on subsequent rounds
+                return hand.must_discard(*card);
             }
         }
 
         // Singleton ace, or ace with one other card.
-        let suit_map = suit_map(&round.cards, trump);
         for threshold in [1, 2] {
-            for (idx, card) in round.cards.iter().enumerate() {
-                if !card.is_trump(trump)
-                    && card.rank == Rank::Ace
-                    && suit_map
-                        .get(&card.suit)
-                        .is_some_and(|v| v.len() == threshold)
-                {
-                    return round.cards.remove(idx);
-                }
+            if let Some(card) = hand
+                .iter_by_suit()
+                .filter_map(|(suit, cards)| {
+                    if *suit != trump && cards.len() == threshold {
+                        cards.iter().find(|card| card.rank == Rank::Ace)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+            {
+                return hand.must_discard(*card);
             }
         }
 
-        round.cards.sort_unstable_by_key(|c| c.value(trump, *c));
-        if round.cards.len() >= 4 {
+        hand.sort();
+        if hand.len() >= 4 {
             // Least card
-            round.cards.remove(0)
+            hand.must_discard_first()
         } else {
             // Best card
-            round.cards.pop().unwrap()
+            hand.must_discard_last()
         }
     }
 
     fn follow_trick(&mut self, trick: &Trick) -> Card {
         // Filter down to what cards I _can_ play.
-        let round = self.round.as_mut().expect("no deal?");
-        let cards = trick.filter(&round.cards);
+        let deal = self.deal.as_mut().expect("no deal?");
+        let trump = self.contract.map(|c| c.suit).expect("no contract?");
+        let hand = &mut deal.hand;
+        let cards = trick.filter(hand.cards());
 
         // The easiest choice is no choice at all.
         assert!(!cards.is_empty());
         if cards.len() == 1 {
-            let card = cards[0];
-            round.cards.retain(|c| *c != card);
-            return card;
+            return hand.must_discard(cards[0]);
         }
 
         // Considerations:
@@ -305,43 +305,248 @@ impl Inner {
         //  - Do I want to win the trick?
         //  - Parition cards into winning/losing.
         //  - Which cards do I want to get rid of?
+        //  - When discarding, can I void a suit?
         //
-        //let position = trick.cards.len();
-        //let partner_winning = trick.best().0 == self.dir.opposite();
+        let position = trick.cards.len();
+        let partner_winning = trick.best().0 == self.dir.opposite();
 
-        let (mut losing, mut winning): (Vec<_>, Vec<_>) = cards
+        let (losing, winning): (Vec<_>, Vec<_>) = cards
             .into_iter()
             .partition(|c| c.value(trick.trump, trick.lead().1) < trick.best_value);
 
-        let card = winning.pop().or_else(|| losing.pop()).unwrap();
-        round.cards.retain(|c| *c != card);
-        card
-    }
-
-    fn notify(&mut self, event: &Event) {
-        let round = self.round.as_mut().expect("no deal?");
-        match event {
-            Event::Bid(contract) => round.contract = Some(*contract),
-            Event::Trick(_) => (),
-            Event::Round(outcome) => {
-                if outcome.team == self.team {
-                    self.our_score += outcome.points;
-                } else {
-                    self.their_score += outcome.points;
-                }
+        let card = if winning.is_empty() {
+            // Always lose with the least-valued card.
+            least_valuable(losing, trump)
+        } else if position == 3 {
+            // If playing last, we have a choice:
+            if partner_winning && !losing.is_empty() {
+                // If our partner is winning, let them win.
+                least_valuable(losing, trump)
+            } else {
+                // Win with the least-valued card.
+                least_valuable(winning, trump)
             }
-        }
+        } else if hand.len() >= 4
+            && partner_winning
+            && trick
+                .get_card(self.dir.opposite())
+                .is_some_and(|c| c.rank == Rank::Ace && !c.is_trump(trump))
+        {
+            // Trust our partner, if they play a non-trump Ace early on.
+            least_valuable(losing, trump)
+        } else {
+            // Win with the most-valued card.
+            most_valuable(winning, trump)
+        };
+        hand.must_discard(card)
     }
 }
 
-impl Round {
+impl Deal {
     fn new(dealer: Dir, cards: Vec<Card>, top: Card) -> Self {
         Self {
             dealer,
             dealer_team: Team::from(dealer),
             top,
-            cards,
-            contract: None,
+            hand: Hand::new(cards, None),
         }
+    }
+}
+
+fn discard(cards: &mut Vec<Card>, card: Card) -> Option<Card> {
+    cards
+        .iter()
+        .position(|c| *c == card)
+        .map(|idx| cards.remove(idx))
+}
+
+fn effective_suit(card: Card, trump: Option<Suit>) -> Suit {
+    trump
+        .map(|trump| card.effective_suit(trump))
+        .unwrap_or(card.suit)
+}
+
+fn group_cards_by_suit(cards: &[Card], trump: Option<Suit>) -> HashMap<Suit, Vec<Card>> {
+    let mut group: HashMap<_, Vec<_>> = HashMap::with_capacity(4);
+    for card in cards {
+        let suit = effective_suit(*card, trump);
+        group.entry(suit).or_default().push(*card)
+    }
+    group
+}
+
+impl Hand {
+    pub fn new(cards: Vec<Card>, trump: Option<Suit>) -> Self {
+        let by_suit = group_cards_by_suit(&cards, trump);
+        Self {
+            cards,
+            trump,
+            by_suit,
+        }
+    }
+
+    pub fn clone_with_trump(&self, trump: Option<Suit>) -> Self {
+        if self.trump == trump {
+            self.clone()
+        } else {
+            Self::new(self.cards.clone(), trump)
+        }
+    }
+
+    pub fn set_trump(&mut self, trump: Option<Suit>) {
+        self.trump = trump;
+        self.by_suit = group_cards_by_suit(&self.cards, trump);
+    }
+
+    pub fn trump(&self) -> Option<Suit> {
+        self.trump
+    }
+
+    pub fn cards(&self) -> &Vec<Card> {
+        &self.cards
+    }
+
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Card> {
+        self.cards.iter()
+    }
+
+    pub fn iter_by_suit(&self) -> std::collections::hash_map::Iter<'_, Suit, Vec<Card>> {
+        self.by_suit.iter()
+    }
+
+    pub fn num_suits(&self) -> usize {
+        self.by_suit.len()
+    }
+
+    pub fn push(&mut self, card: Card) {
+        let suit = effective_suit(card, self.trump);
+        self.cards.push(card);
+        self.by_suit.entry(suit).or_default().push(card)
+    }
+
+    pub fn sort(&mut self) {
+        let trump = self.trump;
+        self.cards.sort_unstable_by_key(|c| match trump {
+            Some(trump) => c.value(trump, *c),
+            None => c.trumpless_value(*c),
+        });
+    }
+
+    pub fn discard(&mut self, card: Card) -> Option<Card> {
+        discard(&mut self.cards, card).map(|card| {
+            self.by_suit = group_cards_by_suit(&self.cards, self.trump);
+            card
+        })
+    }
+
+    pub fn must_discard(&mut self, card: Card) -> Card {
+        self.discard(card).expect("hand must contain card")
+    }
+
+    pub fn discard_first(&mut self) -> Option<Card> {
+        if self.cards.is_empty() {
+            None
+        } else {
+            Some(self.cards.remove(0))
+        }
+    }
+
+    pub fn must_discard_first(&mut self) -> Card {
+        self.discard_first().expect("hand is non-empty")
+    }
+
+    pub fn discard_last(&mut self) -> Option<Card> {
+        if self.cards.is_empty() {
+            None
+        } else {
+            self.cards.pop()
+        }
+    }
+
+    pub fn must_discard_last(&mut self) -> Card {
+        self.discard_last().expect("hand is non-empty")
+    }
+
+    pub fn dealer_discard(&mut self) -> Card {
+        let trump = self.trump.expect("trump must be set");
+
+        // Find a non-trump non-Ace that will void a suit.
+        let voiding: Vec<_> = self
+            .iter_by_suit()
+            .filter_map(|(suit, cards)| {
+                if *suit != trump && cards.len() == 1 && cards[0].rank != Rank::Ace {
+                    Some(cards[0])
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !voiding.is_empty() {
+            let card = least_valuable(voiding, trump);
+            return self.must_discard(card);
+        }
+
+        // Find a non-trump non-Ace that will leave only an Ace behind.
+        let near_voiding: Vec<_> = self
+            .iter_by_suit()
+            .filter_map(|(suit, cards)| {
+                if *suit != trump && cards.len() == 2 {
+                    match (cards[0].rank, cards[1].rank) {
+                        (Rank::Ace, _) => Some(cards[1]),
+                        (_, Rank::Ace) => Some(cards[0]),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !near_voiding.is_empty() {
+            let card = least_valuable(near_voiding, trump);
+            return self.must_discard(card);
+        }
+
+        // Can't void a suit, just remove the weakest card.
+        self.sort();
+        self.must_discard_first()
+    }
+
+    // A rubric based on Eric Zalas's "z-score".
+    pub fn z_score(&self, opponent_top: Option<Card>) -> u8 {
+        let trump = self.trump.expect("trump must be set");
+        let mut score = 0;
+
+        fn card_score(card: Card, trump: Suit) -> u8 {
+            match (card.is_trump(trump), card.rank) {
+                (true, Rank::Jack) => 3,
+                (true, _) => 2,
+                (false, Rank::Ace) => 1,
+                _ => 0,
+            }
+        }
+
+        // Intrinsic card values.
+        score += self
+            .iter()
+            .fold(0, |acc, card| acc + card_score(*card, trump));
+
+        // Voids.
+        score += match self.num_suits() {
+            1 => 3,
+            2 => 2,
+            3 => 1,
+            4 => 0,
+            _ => unreachable!(),
+        };
+
+        // Top card given to opponent.
+        let penalty = opponent_top
+            .map(|card| card_score(card, trump))
+            .unwrap_or(0);
+        score.saturating_sub(penalty)
     }
 }

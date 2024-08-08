@@ -46,6 +46,13 @@ impl Trick {
         self.cards[self.best]
     }
 
+    /// Return the specified player's card in this trick.
+    pub fn get_card(&self, dir: Dir) -> Option<Card> {
+        self.cards
+            .iter()
+            .find_map(|(d, c)| if *d == dir { Some(*c) } else { None })
+    }
+
     /// Validate that the player is following the lead suit where possible.
     pub fn is_following_lead(&self, hand: &[Card], card: &Card) -> bool {
         let lead_card = self.lead().1;

@@ -230,7 +230,7 @@ pub fn main() {
     let players = Players::new(
         Dir::all_dirs()
             .iter()
-            .map(|&d| (d, Robot::new(d).as_player()))
+            .map(|&d| (d, Robot::new(d).into_player()))
             .collect(),
     );
     let mut euchre = Euchre::new(players);

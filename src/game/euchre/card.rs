@@ -95,6 +95,14 @@ impl Card {
         }
     }
 
+    pub fn effective_suit(&self, trump: Suit) -> Suit {
+        if self.is_trump(trump) {
+            trump
+        } else {
+            self.suit
+        }
+    }
+
     pub fn value(&self, trump: Suit, lead: Card) -> u8 {
         if self.is_trump(trump) {
             match self.rank {
@@ -112,6 +120,21 @@ impl Card {
                 }
             }
         } else if self.suit == lead.suit && !lead.is_trump(trump) {
+            match self.rank {
+                Rank::Nine => 1,
+                Rank::Ten => 2,
+                Rank::Jack => 3,
+                Rank::Queen => 4,
+                Rank::King => 5,
+                Rank::Ace => 6,
+            }
+        } else {
+            0
+        }
+    }
+
+    pub fn trumpless_value(&self, lead: Card) -> u8 {
+        if self.suit == lead.suit {
             match self.rank {
                 Rank::Nine => 1,
                 Rank::Ten => 2,

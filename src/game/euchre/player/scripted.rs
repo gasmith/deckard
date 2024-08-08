@@ -54,7 +54,7 @@ impl Player for ScriptedPlayer {
 }
 
 impl ScriptedPlayer {
-    pub fn as_player(self) -> Arc<dyn Player> {
+    pub fn into_player(self) -> Arc<dyn Player> {
         Arc::new(self)
     }
 
