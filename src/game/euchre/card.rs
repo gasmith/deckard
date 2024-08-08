@@ -79,6 +79,10 @@ impl FromStr for Card {
 }
 
 impl Card {
+    pub fn new(rank: Rank, suit: Suit) -> Self {
+        Self { rank, suit }
+    }
+
     pub fn is_trump(&self, trump: Suit) -> bool {
         self.suit == trump || matches!(self.rank, Rank::Jack) && self.suit.color() == trump.color()
     }
@@ -106,7 +110,6 @@ impl Card {
                         12
                     }
                 }
-                _ => unreachable!(),
             }
         } else if self.suit == lead.suit && !lead.is_trump(trump) {
             match self.rank {
@@ -116,7 +119,6 @@ impl Card {
                 Rank::Queen => 4,
                 Rank::King => 5,
                 Rank::Ace => 6,
-                _ => unreachable!(),
             }
         } else {
             0

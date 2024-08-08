@@ -8,7 +8,8 @@ use super::{Card, Dir, Suit};
 pub struct Trick {
     pub trump: Suit,
     pub cards: Vec<(Dir, Card)>,
-    pub winner: Dir,
+    pub best: usize,
+    pub best_value: u8,
 }
 
 impl Display for Trick {
@@ -30,40 +31,50 @@ impl Trick {
         Self {
             trump,
             cards: vec![(leader, card)],
-            winner: leader,
+            best: 0,
+            best_value: card.value(trump, card),
         }
     }
 
-    /// The leading player.
-    pub fn leader(&self) -> Dir {
-        self.cards[0].0
+    /// The lead card.
+    pub fn lead(&self) -> (Dir, Card) {
+        self.cards[0]
     }
 
-    /// The leading card.
-    pub fn lead(&self) -> Card {
-        self.cards[0].1
+    /// The best card.
+    pub fn best(&self) -> (Dir, Card) {
+        self.cards[self.best]
     }
 
     /// Validate that the player is following the lead suit where possible.
     pub fn is_following_lead(&self, hand: &[Card], card: &Card) -> bool {
-        let lead = self.lead();
-        card.is_following(self.trump, lead)
-            || !hand.iter().any(|c| c.is_following(self.trump, lead))
+        let lead_card = self.lead().1;
+        card.is_following(self.trump, lead_card)
+            || !hand.iter().any(|c| c.is_following(self.trump, lead_card))
+    }
+
+    /// Filters the hand down to the set of playable cards.
+    pub fn filter(&self, hand: &[Card]) -> Vec<Card> {
+        let following: Vec<_> = hand
+            .iter()
+            .filter(|c| c.is_following(self.trump, self.lead().1))
+            .copied()
+            .collect();
+        if following.is_empty() {
+            hand.to_vec()
+        } else {
+            following
+        }
     }
 
     /// Plays a card into the trick.
     pub fn play(&mut self, dir: Dir, card: Card) {
+        let card_value = card.value(self.trump, self.lead().1);
+        if card_value > self.best_value {
+            self.best_value = card_value;
+            self.best = self.cards.len();
+        }
         self.cards.push((dir, card));
-        self.winner = self.calculate_winner();
-    }
-
-    /// The current winner of the trick.
-    fn calculate_winner(&self) -> Dir {
-        self.cards
-            .iter()
-            .max_by_key(|(_, card)| card.value(self.trump, self.lead()))
-            .expect("non-empty")
-            .0
     }
 }
 
@@ -91,7 +102,7 @@ mod test {
     }
 
     #[test]
-    fn test_trick_winner() {
+    fn test_trick_best() {
         struct Case {
             trick: Trick,
             expect: Dir,
@@ -122,7 +133,7 @@ mod test {
         ];
         for case in cases {
             println!("{} -> {:?}", &case.trick, &case.expect);
-            assert_eq!(case.expect, case.trick.winner);
+            assert_eq!(case.expect, case.trick.best().0);
         }
     }
 }

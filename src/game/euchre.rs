@@ -20,6 +20,8 @@ use player::Players;
 use round::{Outcome, Round};
 pub use trick::Trick;
 
+use self::player::Robot;
+
 /// Table position, represented as cardinal direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Dir {
@@ -29,6 +31,12 @@ pub enum Dir {
     West,
 }
 impl Dir {
+    fn all_dirs() -> &'static [Dir; 4] {
+        static DIRS: [Dir; 4] = [Dir::North, Dir::East, Dir::South, Dir::West];
+        &DIRS
+    }
+
+    #[cfg(test)]
     fn from_char(s: char) -> Option<Self> {
         let dir = match s {
             'N' => Dir::North,
@@ -118,14 +126,14 @@ impl Deck {
     }
 }
 
-/// A game consists of a set of players.
-struct Game {
+/// A euchre game consists of a set of players.
+struct Euchre {
     players: Players,
     next_dealer: Dir,
     points: HashMap<Team, u8>,
 }
 
-impl Game {
+impl Euchre {
     pub fn new(players: Players) -> Self {
         Self {
             players,
@@ -140,10 +148,12 @@ impl Game {
         let round = Round::new(self.next_dealer, deck);
         let outcome = round.run(&self.players)?;
         let points = self.points.get_mut(&outcome.team).expect("init points");
+        notify(&self.players, Event::Round(outcome.clone()));
         *points += outcome.points;
         Ok(outcome)
     }
 
+    #[allow(dead_code)]
     fn winner(&self) -> Option<Team> {
         for (team, points) in &self.points {
             if *points >= 10 {
@@ -156,21 +166,16 @@ impl Game {
 
 #[derive(Debug, Clone)]
 pub enum Event {
-    Bid(Bid),
+    Bid(Contract),
     Trick(Trick),
+    Round(Outcome),
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Contract {
-    Partner,
-    Alone,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Bid {
-    pub dir: Dir,
+pub struct Contract {
+    pub maker: Dir,
     pub suit: Suit,
-    pub contract: Contract,
+    pub alone: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -190,6 +195,7 @@ pub enum InvalidPlay {
 
 #[derive(Debug, Clone, Copy)]
 enum Error {
+    #[allow(dead_code)]
     InvalidPlay(Dir, InvalidPlay),
 }
 
@@ -205,8 +211,29 @@ fn discard(hand: &mut Vec<Card>, card: Card) -> bool {
 
 /// Notifies all players of an event.
 fn notify(players: &Players, event: Event) {
-    println!("{:?}", event);
+    match &event {
+        Event::Bid(contract) => println!(
+            "{:?}: Bid {}{}",
+            contract.maker,
+            contract.suit,
+            if contract.alone { " alone" } else { "" }
+        ),
+        Event::Trick(trick) => println!("Trick: {} -> {:?}", trick, trick.best().0),
+        Event::Round(outcome) => println!("{:?}: Scores {}", outcome.team, outcome.points),
+    }
     for player in players.iter() {
         player.notify(&event)
     }
+}
+
+pub fn main() {
+    let players = Players::new(
+        Dir::all_dirs()
+            .iter()
+            .map(|&d| (d, Robot::new(d).as_player()))
+            .collect(),
+    );
+    let mut euchre = Euchre::new(players);
+    let mut rng = rand::thread_rng();
+    let _ = euchre.run_round(&mut rng).expect("robot malfunction");
 }

@@ -39,6 +39,15 @@ impl Suit {
             Suit::Club | Suit::Spade => Color::Black,
         }
     }
+
+    pub fn to_matching_color(self) -> Self {
+        match self {
+            Suit::Club => Suit::Spade,
+            Suit::Diamond => Suit::Heart,
+            Suit::Heart => Suit::Diamond,
+            Suit::Spade => Suit::Club,
+        }
+    }
 }
 impl Display for Suit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

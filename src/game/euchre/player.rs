@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use std::ops::Index;
 use std::sync::Arc;
 
-use super::{Bid, Card, Contract, Dir, Event, InvalidPlay, Suit, Trick};
+use super::{Card, Contract, Dir, Event, InvalidPlay, Suit, Trick};
+
+mod robot;
+pub use robot::Robot;
 
 #[cfg(test)]
 mod scripted;
@@ -22,18 +25,18 @@ pub trait Player {
     ///
     /// If this function returns true, the player is accepting a contract to
     /// win 3 or more tricks, and the card will go into the dealer's hand.
-    fn bid_top(&self, dealer: Dir, top: Card) -> Option<Contract>;
+    fn bid_top(&self) -> Option<bool>;
 
     /// This player is allowed to bid on any other suit other than that of the
     /// upturned card offered in [`bid_top`]. All preceding players seated
     /// clockwise from the dealer have passed.
     ///
     /// The dealer is required to bid.
-    fn bid_other(&self, dealer: Dir) -> Option<(Suit, Contract)>;
+    fn bid_other(&self) -> Option<(Suit, bool)>;
 
     /// The dealer takes up the top card, and discards a card. The card must
     /// come from the player's hand.
-    fn pick_up_top(&self, card: Card, bid: Bid) -> Card;
+    fn pick_up_top(&self, card: Card) -> Card;
 
     /// Leads a new trick. The card must come from the player's hand.
     fn lead_trick(&self) -> Card;

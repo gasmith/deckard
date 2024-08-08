@@ -46,9 +46,11 @@ impl Round {
                 Ok(Round::BidTop(bidding))
             }
             Round::BidTop(bidding) => match bidding.bid_top(players)? {
-                Some(bid) => {
-                    notify(players, Event::Bid(bid));
-                    bidding.dealer_pick_up_top(players, bid).map(Round::Play)
+                Some(contract) => {
+                    notify(players, Event::Bid(contract));
+                    bidding
+                        .dealer_pick_up_top(players, contract)
+                        .map(Round::Play)
                 }
                 None => Ok(Round::BidOther(bidding)),
             },
@@ -73,7 +75,7 @@ impl Round {
 }
 
 /// The outcome of a round.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Outcome {
     pub team: Team,
     pub points: u8,
