@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use itertools::iproduct;
 use rand::prelude::*;
@@ -49,6 +49,21 @@ impl Suit {
         }
     }
 }
+
+impl FromStr for Suit {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars();
+        let suit = chars.next().and_then(Suit::from_char).ok_or(())?;
+        if chars.next().is_none() {
+            Ok(suit)
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl Display for Suit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let sym = match self {

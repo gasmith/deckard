@@ -48,13 +48,9 @@ impl Round {
             Round::BidTop(bidding) => match bidding.bid_top(players)? {
                 Some(contract) => {
                     notify(players, Event::Bid(contract));
-                    if contract.alone {
-                        Ok(Round::Play(bidding.into_tricks(contract)))
-                    } else {
-                        bidding
-                            .dealer_pick_up_top(players, contract)
-                            .map(Round::Play)
-                    }
+                    bidding
+                        .dealer_pick_up_top(players, contract)
+                        .map(Round::Play)
                 }
                 None => Ok(Round::BidOther(bidding)),
             },

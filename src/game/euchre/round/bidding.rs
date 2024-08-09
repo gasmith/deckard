@@ -54,6 +54,10 @@ impl Bidding {
         players: &Players,
         contract: Contract,
     ) -> Result<Tricks, Error> {
+        // If the dealer is sitting out, no need to discard.
+        if contract.alone && contract.maker == self.dealer.opposite() {
+            return Ok(self.into_tricks(contract));
+        }
         let hand = self.hands.get_mut(&self.dealer).unwrap();
         hand.push(self.top);
         let dealer = &players[self.dealer];

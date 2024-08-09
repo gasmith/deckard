@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use super::{Card, Contract, Dir, Event, InvalidPlay, Suit, Trick};
 
+mod console;
 mod robot;
+pub use console::Console;
 pub use robot::Robot;
 
 #[cfg(test)]

@@ -4,8 +4,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use itertools::Itertools;
-
 use super::{Card, Contract, Dir, Event, InvalidPlay, Player, Suit, Trick};
 use crate::game::euchre::{Rank, Team};
 
@@ -65,7 +63,7 @@ impl Player for Robot {
     fn pick_up_top(&self, top: Card) -> Card {
         let mut inner = self.0.lock().unwrap();
         let card = inner.pick_up_top(top);
-        println!("{:?}: Discard {card}", inner.dir);
+        //println!("{:?}: Discard {card}", inner.dir);
         card
     }
 
@@ -122,11 +120,12 @@ impl Inner {
     }
 
     fn deal(&mut self, dealer: Dir, cards: Vec<Card>, top: Card) {
+        /*
         println!(
             "{:?}: {}",
             self.dir,
             cards.iter().map(|c| c.to_string()).join(", ")
-        );
+        );*/
         self.deal.replace(Deal::new(dealer, cards, top));
         self.contract = None;
     }
@@ -134,7 +133,7 @@ impl Inner {
     fn bid_top(&self) -> Option<bool> {
         let deal = self.deal.as_ref().expect("no deal?");
         let score = self.z_score(deal.top.suit, Some(deal.top));
-        println!("{:?}: z-score for {} is {}", self.dir, deal.top.suit, score);
+        //println!("{:?}: z-score for {} is {}", self.dir, deal.top.suit, score);
         if score >= MIN_Z_SCORE {
             Some(score >= MIN_LONER_Z_SCORE)
         } else if score + 2 >= MIN_Z_SCORE
@@ -143,7 +142,7 @@ impl Inner {
                 .iter()
                 .all(|s| *s == deal.top.suit || score > self.z_score(*s, None))
         {
-            println!("{:?}: Better than getting stuck...", self.dir);
+            //println!("{:?}: Better than getting stuck...", self.dir);
             Some(false)
         } else {
             None
@@ -156,7 +155,7 @@ impl Inner {
         for &suit in Suit::all_suits() {
             if suit != deal.top.suit {
                 let score = self.z_score(suit, None);
-                println!("{:?}: z-score for {} is {}", self.dir, suit, score);
+                //println!("{:?}: z-score for {} is {}", self.dir, suit, score);
                 if score >= MIN_Z_SCORE {
                     return Some((suit, score >= MIN_LONER_Z_SCORE));
                 } else if score > best.0 {
@@ -280,6 +279,13 @@ impl Inner {
         if hand.len() >= 4 {
             // Least card
             hand.must_discard_first()
+        } else if Team::from(contract.maker) != self.team {
+            // Best non-trump card as defender
+            if let Some(card) = hand.iter().rev().find(|c| !c.is_trump(trump)) {
+                hand.must_discard(*card)
+            } else {
+                hand.must_discard_last()
+            }
         } else {
             // Best card
             hand.must_discard_last()

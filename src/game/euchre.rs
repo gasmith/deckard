@@ -20,7 +20,7 @@ use player::Players;
 use round::{Outcome, Round};
 pub use trick::Trick;
 
-use self::player::Robot;
+use self::player::{Console, Robot};
 
 /// Table position, represented as cardinal direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -150,6 +150,8 @@ impl Euchre {
         let points = self.points.get_mut(&outcome.team).expect("init points");
         notify(&self.players, Event::Round(outcome.clone()));
         *points += outcome.points;
+        self.next_dealer = self.next_dealer.next();
+        println!("Standings: {:?}", self.points);
         Ok(outcome)
     }
 
@@ -230,10 +232,24 @@ pub fn main() {
     let players = Players::new(
         Dir::all_dirs()
             .iter()
-            .map(|&d| (d, Robot::new(d).into_player()))
+            .map(|&d| {
+                let player = if d == Dir::South{
+                    Console::new(d).into_player()
+                } else {
+                    Robot::new(d).into_player()
+                };
+                //let player = Robot::new(d).into_player();
+                (d, player)
+            })
             .collect(),
     );
     let mut euchre = Euchre::new(players);
     let mut rng = rand::thread_rng();
-    let _ = euchre.run_round(&mut rng).expect("robot malfunction");
+    loop {
+        let _ = euchre.run_round(&mut rng).expect("robot malfunction");
+        if let Some(team) = euchre.winner() {
+            println!("{:?} wins!", team);
+            break;
+        }
+    }
 }
