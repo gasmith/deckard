@@ -29,11 +29,11 @@ impl Rank {
     pub fn from_char(s: char) -> Option<Self> {
         let suit = match s {
             '9' => Rank::Nine,
-            'T' => Rank::Ten,
-            'J' => Rank::Jack,
-            'Q' => Rank::Queen,
-            'K' => Rank::King,
-            'A' => Rank::Ace,
+            'T' | 't' => Rank::Ten,
+            'J' | 'j' => Rank::Jack,
+            'Q' | 'q' => Rank::Queen,
+            'K' | 'k' => Rank::King,
+            'A' | 'a' => Rank::Ace,
             _ => return None,
         };
         Some(suit)

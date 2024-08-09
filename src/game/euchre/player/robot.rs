@@ -132,9 +132,17 @@ impl Inner {
 
     fn bid_top(&self) -> Option<bool> {
         let deal = self.deal.as_ref().expect("no deal?");
-        let score = self.z_score(deal.top.suit, Some(deal.top));
+        let mut score = self.z_score(deal.top.suit, Some(deal.top));
         //println!("{:?}: z-score for {} is {}", self.dir, deal.top.suit, score);
         if score >= MIN_Z_SCORE {
+            if self.dir == deal.dealer.opposite() {
+                // If we're considering going alone, and the dealer is
+                // opposite, ignore the top card. This could be more nuanced -
+                // removing a trump from the game is worth _something_, but
+                // it's probably not as good as having it your team's hands.
+                // Hence the +1.
+                score = self.z_score(deal.top.suit, None) + 1;
+            }
             Some(score >= MIN_LONER_Z_SCORE)
         } else if score + 2 >= MIN_Z_SCORE
             && deal.dealer == self.dir

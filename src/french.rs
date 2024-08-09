@@ -33,10 +33,10 @@ impl Suit {
 
     pub fn from_char(s: char) -> Option<Self> {
         let suit = match s {
-            '♣' | 'C' => Suit::Club,
-            '♦' | 'D' => Suit::Diamond,
-            '♥' | 'H' => Suit::Heart,
-            '♠' | 'S' => Suit::Spade,
+            '♣' | 'C' | 'c' => Suit::Club,
+            '♦' | 'D' | 'd' => Suit::Diamond,
+            '♥' | 'H' | 'h' => Suit::Heart,
+            '♠' | 'S' | 's' => Suit::Spade,
             _ => return None,
         };
         Some(suit)
@@ -123,7 +123,7 @@ impl Rank {
 
     pub fn from_char(s: char) -> Option<Self> {
         let suit = match s {
-            'A' => Rank::Ace,
+            'A' | 'a' => Rank::Ace,
             '2' => Rank::Two,
             '3' => Rank::Three,
             '4' => Rank::Four,
@@ -132,10 +132,10 @@ impl Rank {
             '7' => Rank::Seven,
             '8' => Rank::Eight,
             '9' => Rank::Nine,
-            'T' => Rank::Ten,
-            'J' => Rank::Jack,
-            'Q' => Rank::Queen,
-            'K' => Rank::King,
+            'T' | 't' => Rank::Ten,
+            'J' | 'j' => Rank::Jack,
+            'Q' | 'q' => Rank::Queen,
+            'K' | 'k' => Rank::King,
             _ => return None,
         };
         Some(suit)

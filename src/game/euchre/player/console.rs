@@ -119,7 +119,7 @@ impl Player for Console {
     }
 
     fn follow_trick(&self, trick: &Trick) -> Card {
-        println!("Trick so far: {}", self.format_trick(trick));
+        println!("Trick: {}", self.format_trick(trick));
         prompt("Follow? ")
     }
 
