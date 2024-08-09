@@ -21,8 +21,6 @@ impl Bidding {
             .map(|dir| (dir, deck.take(5)))
             .collect();
         let top = deck.take(1)[0];
-        println!("Dealer: {dealer:?}");
-        println!("Top: {top}");
         Bidding { hands, dealer, top }
     }
 

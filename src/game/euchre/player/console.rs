@@ -2,22 +2,14 @@
 
 use std::{fmt::Display, io::Write, str::FromStr, sync::Arc};
 
+use ansi_term::{ANSIString, ANSIStrings};
 use itertools::Itertools;
 
 use super::{Card, Dir, Event, InvalidPlay, Player, Suit, Trick};
 
 pub struct Console {
     dir: Dir,
-}
-
-impl Console {
-    pub fn new(dir: Dir) -> Self {
-        Self { dir }
-    }
-
-    pub fn into_player(self) -> Arc<dyn Player> {
-        Arc::new(self)
-    }
+    color: bool,
 }
 
 fn prompt<T: FromStr, S: Display>(prompt: S) -> T {
@@ -38,13 +30,65 @@ fn prompt<T: FromStr, S: Display>(prompt: S) -> T {
     }
 }
 
+impl Console {
+    pub fn new(dir: Dir) -> Self {
+        Self { dir, color: true }
+    }
+
+    pub fn into_player(self) -> Arc<dyn Player> {
+        Arc::new(self)
+    }
+
+    fn format(&self, s: &ANSIStrings) -> String {
+        if self.color {
+            s.to_string()
+        } else {
+            ansi_term::unstyle(s)
+        }
+    }
+
+    fn format_card(&self, card: Card) -> String {
+        self.format(&ANSIStrings(&[card.to_ansi_string()]))
+    }
+
+    fn format_suit(&self, suit: Suit) -> String {
+        self.format(&ANSIStrings(&[suit.to_ansi_string()]))
+    }
+
+    fn format_cards(&self, cards: &[Card]) -> String {
+        let mut parts: Vec<ANSIString> = vec![];
+        for (ii, card) in cards
+            .iter()
+            .sorted_unstable_by_key(|c| (c.suit, c.rank))
+            .enumerate()
+        {
+            if ii > 0 {
+                parts.push(", ".into());
+            }
+            parts.push(card.to_ansi_string());
+        }
+        self.format(&ANSIStrings(&parts))
+    }
+
+    fn format_trick(&self, trick: &Trick) -> String {
+        let mut parts: Vec<ANSIString> = vec!["[".into()];
+        for (i, (dir, card)) in trick.cards.iter().enumerate() {
+            if i != 0 {
+                parts.push(", ".into());
+            }
+            parts.push(format!("{dir:?}:").into());
+            parts.push(card.to_ansi_string());
+        }
+        parts.push("]".into());
+        self.format(&ANSIStrings(&parts))
+    }
+}
+
 impl Player for Console {
-    fn deal(&self, _: Dir, cards: Vec<Card>, _: Card) {
-        println!(
-            "{:?}: {}",
-            self.dir,
-            cards.iter().map(|c| c.to_string()).join(", ")
-        );
+    fn deal(&self, dealer: Dir, cards: Vec<Card>, top: Card) {
+        println!("Dealer: {dealer:?}");
+        println!("Top: {}", self.format_card(top));
+        println!("{:?}: {}", self.dir, self.format_cards(&cards));
     }
 
     fn bid_top(&self) -> Option<bool> {
@@ -75,11 +119,32 @@ impl Player for Console {
     }
 
     fn follow_trick(&self, trick: &Trick) -> Card {
-        println!("Trick so far: {trick}");
+        println!("Trick so far: {}", self.format_trick(trick));
         prompt("Follow? ")
     }
 
-    fn notify(&self, _: &Event) {}
+    fn notify(&self, event: &Event) {
+        match event {
+            Event::Bid(contract) => {
+                println!(
+                    "{:?}: Bid {}{}",
+                    contract.maker,
+                    self.format_suit(contract.suit),
+                    if contract.alone { " alone" } else { "" }
+                );
+            }
+            Event::Trick(trick) => {
+                println!(
+                    "Trick: {} -> {:?}",
+                    self.format_trick(trick),
+                    trick.best().0
+                );
+            }
+            Event::Round(outcome) => {
+                println!("{:?}: Scores {}", outcome.team, outcome.points);
+            }
+        }
+    }
 
     fn invalid_play(&self, err: InvalidPlay) -> bool {
         println!("Invalid play: {err:?}");

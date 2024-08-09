@@ -1,37 +1,39 @@
 use std::{fmt::Display, str::FromStr};
 
+use ansi_term::ANSIString;
+
 pub use crate::french::Suit;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Rank {
-    Ace,
     Nine,
     Ten,
     Jack,
     Queen,
     King,
+    Ace,
 }
 impl Rank {
     pub fn all_ranks() -> &'static [Rank] {
         static RANKS: [Rank; 6] = [
-            Rank::Ace,
             Rank::Nine,
             Rank::Ten,
             Rank::Jack,
             Rank::Queen,
             Rank::King,
+            Rank::Ace,
         ];
         &RANKS
     }
 
     pub fn from_char(s: char) -> Option<Self> {
         let suit = match s {
-            'A' => Rank::Ace,
             '9' => Rank::Nine,
             'T' => Rank::Ten,
             'J' => Rank::Jack,
             'Q' => Rank::Queen,
             'K' => Rank::King,
+            'A' => Rank::Ace,
             _ => return None,
         };
         Some(suit)
@@ -40,12 +42,12 @@ impl Rank {
 impl Display for Rank {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let sym = match self {
-            Rank::Ace => "A",
             Rank::Nine => "9",
             Rank::Ten => "T",
             Rank::Jack => "J",
             Rank::Queen => "Q",
             Rank::King => "K",
+            Rank::Ace => "A",
         };
         f.write_str(sym)
     }
@@ -81,6 +83,14 @@ impl FromStr for Card {
 impl Card {
     pub fn new(rank: Rank, suit: Suit) -> Self {
         Self { rank, suit }
+    }
+
+    pub fn to_ansi_string(&self) -> ANSIString<'static> {
+        use ansi_term::Colour::Red;
+        match self.suit {
+            Suit::Club | Suit::Spade => self.to_string().into(),
+            Suit::Diamond | Suit::Heart => Red.paint(self.to_string()),
+        }
     }
 
     pub fn is_trump(&self, trump: Suit) -> bool {

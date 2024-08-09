@@ -1,5 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
+use ansi_term::ANSIString;
 use itertools::iproduct;
 use rand::prelude::*;
 
@@ -9,17 +10,25 @@ pub enum Color {
     Black,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Suit {
     Club,
     Diamond,
-    Heart,
     Spade,
+    Heart,
 }
 impl Suit {
     pub fn all_suits() -> &'static [Suit] {
         static SUITS: [Suit; 4] = [Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade];
         &SUITS
+    }
+
+    pub fn to_ansi_string(self) -> ANSIString<'static> {
+        use ansi_term::Colour::Red;
+        match self {
+            Suit::Club | Suit::Spade => self.to_string().into(),
+            Suit::Diamond | Suit::Heart => Red.paint(self.to_string()),
+        }
     }
 
     pub fn from_char(s: char) -> Option<Self> {

@@ -213,16 +213,6 @@ fn discard(hand: &mut Vec<Card>, card: Card) -> bool {
 
 /// Notifies all players of an event.
 fn notify(players: &Players, event: Event) {
-    match &event {
-        Event::Bid(contract) => println!(
-            "{:?}: Bid {}{}",
-            contract.maker,
-            contract.suit,
-            if contract.alone { " alone" } else { "" }
-        ),
-        Event::Trick(trick) => println!("Trick: {} -> {:?}", trick, trick.best().0),
-        Event::Round(outcome) => println!("{:?}: Scores {}", outcome.team, outcome.points),
-    }
     for player in players.iter() {
         player.notify(&event)
     }
@@ -233,7 +223,7 @@ pub fn main() {
         Dir::all_dirs()
             .iter()
             .map(|&d| {
-                let player = if d == Dir::South{
+                let player = if d == Dir::South {
                     Console::new(d).into_player()
                 } else {
                     Robot::new(d).into_player()

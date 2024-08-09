@@ -92,7 +92,6 @@ impl Tricks {
         }
         if total_tricks - makers_tricks >= 3 {
             // Euchred! No need to keep playing.
-            println!("Euchred!");
             let defenders = makers.other();
             Some(Outcome::new(defenders, 2))
         } else if total_tricks == 5 {
