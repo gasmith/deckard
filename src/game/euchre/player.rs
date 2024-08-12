@@ -15,6 +15,11 @@ mod scripted;
 #[cfg(test)]
 pub use scripted::ScriptedPlayer;
 
+#[cfg(feature = "tui")]
+mod tui;
+#[cfg(feature = "tui")]
+pub use tui::TuiPlayer;
+
 /// A trait that implements a euchre player.
 pub trait Player {
     /// The `dealer` deals a new hand of `cards` to this player, and reveals

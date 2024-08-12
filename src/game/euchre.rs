@@ -14,11 +14,15 @@ mod card;
 mod player;
 mod round;
 mod trick;
+#[cfg(feature = "tui")]
+mod tui;
 pub use card::{Card, Rank, Suit};
 pub use player::Player;
 use player::Players;
 use round::{Outcome, Round};
 pub use trick::Trick;
+#[cfg(feature = "tui")]
+pub use tui::tui_main;
 
 use self::player::{Console, Robot};
 
@@ -218,7 +222,7 @@ fn notify(players: &Players, event: Event) {
     }
 }
 
-pub fn main() {
+pub fn cli_main() {
     let players = Players::new(
         Dir::all_dirs()
             .iter()
