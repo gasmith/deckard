@@ -2,12 +2,12 @@
 
 use std::fmt::Display;
 
-use super::{Card, Dir, Suit};
+use super::{Card, Seat, Suit};
 
 #[derive(Debug, Clone)]
 pub struct Trick {
     pub trump: Suit,
-    pub cards: Vec<(Dir, Card)>,
+    pub cards: Vec<(Seat, Card)>,
     pub best: usize,
     pub best_value: u8,
 }
@@ -15,11 +15,11 @@ pub struct Trick {
 impl Display for Trick {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[")?;
-        for (i, (dir, card)) in self.cards.iter().enumerate() {
+        for (i, (seat, card)) in self.cards.iter().enumerate() {
             if i != 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{dir:?}:{card}")?;
+            write!(f, "{seat:?}:{card}")?;
         }
         write!(f, "]")
     }
@@ -27,7 +27,7 @@ impl Display for Trick {
 
 impl Trick {
     /// Opens a new trick.
-    pub fn new(trump: Suit, leader: Dir, card: Card) -> Self {
+    pub fn new(trump: Suit, leader: Seat, card: Card) -> Self {
         Self {
             trump,
             cards: vec![(leader, card)],
@@ -36,21 +36,26 @@ impl Trick {
         }
     }
 
+    /// The number of cards played into this trick.
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+
     /// The lead card.
-    pub fn lead(&self) -> (Dir, Card) {
+    pub fn lead(&self) -> (Seat, Card) {
         self.cards[0]
     }
 
     /// The best card.
-    pub fn best(&self) -> (Dir, Card) {
+    pub fn best(&self) -> (Seat, Card) {
         self.cards[self.best]
     }
 
     /// Return the specified player's card in this trick.
-    pub fn get_card(&self, dir: Dir) -> Option<Card> {
+    pub fn get_card(&self, seat: Seat) -> Option<Card> {
         self.cards
             .iter()
-            .find_map(|(d, c)| if *d == dir { Some(*c) } else { None })
+            .find_map(|(d, c)| if *d == seat { Some(*c) } else { None })
     }
 
     /// Validate that the player is following the lead suit where possible.
@@ -75,13 +80,13 @@ impl Trick {
     }
 
     /// Plays a card into the trick.
-    pub fn play(&mut self, dir: Dir, card: Card) {
+    pub fn play(&mut self, seat: Seat, card: Card) {
         let card_value = card.value(self.trump, self.lead().1);
         if card_value > self.best_value {
             self.best_value = card_value;
             self.best = self.cards.len();
         }
-        self.cards.push((dir, card));
+        self.cards.push((seat, card));
     }
 }
 
@@ -94,16 +99,16 @@ mod test {
         let trump = Suit::from_char(trump).unwrap();
         let mut cards = cards.iter().map(|s| {
             let mut chars = s.chars();
-            let dir = chars.next().and_then(Dir::from_char).unwrap();
+            let seat = chars.next().and_then(Seat::from_char).unwrap();
             let rank = chars.next().and_then(Rank::from_char).unwrap();
             let suit = chars.next().and_then(Suit::from_char).unwrap();
             assert!(chars.next().is_none());
-            (dir, Card { rank, suit })
+            (seat, Card { rank, suit })
         });
-        let (dir, card) = cards.next().unwrap();
-        let mut trick = Trick::new(trump, dir, card);
-        for (dir, card) in cards {
-            trick.play(dir, card);
+        let (seat, card) = cards.next().unwrap();
+        let mut trick = Trick::new(trump, seat, card);
+        for (seat, card) in cards {
+            trick.play(seat, card);
         }
         trick
     }
@@ -112,13 +117,13 @@ mod test {
     fn test_trick_best() {
         struct Case {
             trick: Trick,
-            expect: Dir,
+            expect: Seat,
         }
 
         fn case(cards: &[&str], expect: char) -> Case {
             Case {
                 trick: trick('H', cards),
-                expect: Dir::from_char(expect).unwrap(),
+                expect: Seat::from_char(expect).unwrap(),
             }
         }
 

@@ -5,11 +5,15 @@ use std::{fmt::Display, io::Write, str::FromStr, sync::Arc};
 use ansi_term::{ANSIString, ANSIStrings};
 use itertools::Itertools;
 
-use super::{Card, Dir, Event, InvalidPlay, Player, Suit, Trick};
+use super::{ActionData, ActionType, Card, Event, Player, PlayerError, PlayerState, Suit, Trick};
 
 pub struct Console {
-    dir: Dir,
     color: bool,
+}
+impl Default for Console {
+    fn default() -> Self {
+        Self::new(true)
+    }
 }
 
 fn prompt<T: FromStr, S: Display>(prompt: S) -> T {
@@ -31,8 +35,8 @@ fn prompt<T: FromStr, S: Display>(prompt: S) -> T {
 }
 
 impl Console {
-    pub fn new(dir: Dir) -> Self {
-        Self { dir, color: true }
+    pub fn new(color: bool) -> Self {
+        Self { color }
     }
 
     pub fn into_player(self) -> Arc<dyn Player> {
@@ -72,59 +76,75 @@ impl Console {
 
     fn format_trick(&self, trick: &Trick) -> String {
         let mut parts: Vec<ANSIString> = vec!["[".into()];
-        for (i, (dir, card)) in trick.cards.iter().enumerate() {
+        for (i, (seat, card)) in trick.cards.iter().enumerate() {
             if i != 0 {
                 parts.push(", ".into());
             }
-            parts.push(format!("{dir:?}:").into());
+            parts.push(format!("{seat:?}:").into());
             parts.push(card.to_ansi_string());
         }
         parts.push("]".into());
         self.format(&ANSIStrings(&parts))
     }
-}
 
-impl Player for Console {
-    fn deal(&self, dealer: Dir, cards: Vec<Card>, top: Card) {
-        println!("Dealer: {dealer:?}");
-        println!("Top: {}", self.format_card(top));
-        println!("{:?}: {}", self.dir, self.format_cards(&cards));
-    }
-
-    fn bid_top(&self) -> Option<bool> {
+    fn bid_top(&self, state: PlayerState) -> ActionData {
+        println!("Hand: {}", self.format_cards(state.hand));
         if prompt::<bool, _>("Bid top? ") {
             let alone = prompt::<bool, _>("Alone? ");
-            Some(alone)
+            ActionData::BidTop { alone }
         } else {
-            None
+            ActionData::Pass
         }
     }
 
-    fn bid_other(&self) -> Option<(Suit, bool)> {
+    fn bid_other(&self, _: PlayerState) -> ActionData {
         if prompt::<bool, _>("Bid other? ") {
             let suit = prompt::<Suit, _>("Suit? ");
             let alone = prompt::<bool, _>("Alone? ");
-            Some((suit, alone))
+            ActionData::BidOther { suit, alone }
         } else {
-            None
+            ActionData::Pass
         }
     }
 
-    fn pick_up_top(&self, _: Card) -> Card {
-        prompt("Discard? ")
+    fn dealer_discard(&self, state: PlayerState) -> ActionData {
+        println!("Hand: {}", self.format_cards(state.hand));
+        let card = prompt("Discard? ");
+        ActionData::Card { card }
     }
 
-    fn lead_trick(&self) -> Card {
-        prompt("Lead? ")
+    fn lead(&self, state: PlayerState) -> ActionData {
+        println!("Hand: {}", self.format_cards(state.hand));
+        let card = prompt("Lead? ");
+        ActionData::Card { card }
     }
 
-    fn follow_trick(&self, trick: &Trick) -> Card {
+    fn follow(&self, state: PlayerState) -> ActionData {
+        let trick = state.current_trick().unwrap();
         println!("Trick: {}", self.format_trick(trick));
-        prompt("Follow? ")
+        println!("Hand: {}", self.format_cards(state.hand));
+        let card = prompt("Follow? ");
+        ActionData::Card { card }
+    }
+}
+
+impl Player for Console {
+    fn take_action(&self, state: PlayerState, action: ActionType) -> ActionData {
+        match action {
+            ActionType::BidTop => self.bid_top(state),
+            ActionType::BidOther => self.bid_other(state),
+            ActionType::DealerDiscard => self.dealer_discard(state),
+            ActionType::Lead => self.lead(state),
+            ActionType::Follow => self.follow(state),
+        }
     }
 
-    fn notify(&self, event: &Event) {
+    fn notify(&self, _: PlayerState, event: &Event) {
         match event {
+            Event::Deal(dealer, top) => {
+                println!("Dealer: {dealer}");
+                println!("Top card: {}", self.format_card(*top));
+            }
             Event::Bid(contract) => {
                 println!(
                     "{:?}: Bid {}{}",
@@ -141,13 +161,13 @@ impl Player for Console {
                 );
             }
             Event::Round(outcome) => {
-                println!("{:?}: Scores {}", outcome.team, outcome.points);
+                println!("{:}: {} points", outcome.team, outcome.points);
             }
         }
     }
 
-    fn invalid_play(&self, err: InvalidPlay) -> bool {
-        println!("Invalid play: {err:?}");
+    fn handle_error(&self, err: PlayerError) -> bool {
+        println!("Error: {err:?}");
         true
     }
 }

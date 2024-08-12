@@ -1,10 +1,15 @@
+use core::fmt;
 use std::{fmt::Display, str::FromStr};
 
 use ansi_term::ANSIString;
+use rand::distributions::{Distribution, Standard};
+use rand::seq::SliceRandom;
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Serialize};
 
 pub use crate::french::Suit;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Rank {
     Nine,
     Ten,
@@ -58,13 +63,11 @@ pub struct Card {
     pub rank: Rank,
     pub suit: Suit,
 }
-
 impl Display for Card {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}{}", self.rank, self.suit)
     }
 }
-
 impl FromStr for Card {
     type Err = ();
 
@@ -77,6 +80,34 @@ impl FromStr for Card {
         } else {
             Err(())
         }
+    }
+}
+impl Serialize for Card {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+impl<'de> Deserialize<'de> for Card {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct CardVisitor;
+        impl<'de> Visitor<'de> for CardVisitor {
+            type Value = Card;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a card")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Card::from_str(value).map_err(|()| E::custom("invalid card"))
+            }
+        }
+        deserializer.deserialize_str(CardVisitor)
     }
 }
 
@@ -156,5 +187,34 @@ impl Card {
         } else {
             0
         }
+    }
+}
+
+pub struct Deck {
+    cards: Vec<Card>,
+}
+impl Default for Deck {
+    fn default() -> Self {
+        let cards = itertools::iproduct!(Rank::all_ranks(), Suit::all_suits())
+            .map(|(&rank, &suit)| Card { rank, suit })
+            .collect();
+        Self { cards }
+    }
+}
+impl Distribution<Deck> for Standard {
+    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> Deck {
+        let mut deck = Deck::default();
+        deck.cards.shuffle(rng);
+        deck
+    }
+}
+impl Deck {
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+
+    pub fn take(&mut self, n: usize) -> Vec<Card> {
+        let idx = self.cards.len().saturating_sub(n);
+        self.cards.split_off(idx)
     }
 }

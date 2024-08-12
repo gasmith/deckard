@@ -3,6 +3,7 @@ use std::{fmt::Display, str::FromStr};
 use ansi_term::ANSIString;
 use itertools::iproduct;
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
@@ -10,7 +11,7 @@ pub enum Color {
     Black,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Suit {
     Club,
     Diamond,
