@@ -4,6 +4,7 @@ use std::{fmt::Display, str::FromStr};
 use ansi_term::ANSIString;
 use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
+use ratatui::text::Span;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
 
@@ -121,6 +122,14 @@ impl Card {
         match self.suit {
             Suit::Club | Suit::Spade => self.to_string().into(),
             Suit::Diamond | Suit::Heart => Red.paint(self.to_string()),
+        }
+    }
+
+    pub fn to_span(&self) -> Span<'static> {
+        use ratatui::style::Color;
+        match self.suit {
+            Suit::Club | Suit::Spade => Span::raw(self.to_string()),
+            Suit::Diamond | Suit::Heart => Span::raw(self.to_string()).style(Color::Red),
         }
     }
 

@@ -86,14 +86,13 @@ Load  Save  Quit  Undo  Tree
 ```
 Load  Save  Quit  Undo >Tree<
 
-         N            +Pass
-                      `Bid ♠
-         K♠            +Lead J♠
-    E  Q♠  Q♠  W       +Lead A♠
-                       |+Follow J♦
-                       `+Follow Q♦
-                        `Follow ?
-         S (you)
+         N            + E: Pass
+                      ` E: Bid ♠
+         K♠            + E: Lead J♥
+    E  Q♠      W       + E: Lead Q♠
+                       |+ N: Follow T♠
+                       `+ N: Follow K♠
+         S (you)        ` W: Follow ?
 
   Trump: ♠
  S Hand: J♦ Q♥ A♠

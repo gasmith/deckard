@@ -91,21 +91,15 @@ fn bid_other(state: PlayerState) -> ActionData {
     for &suit in Suit::all_suits() {
         if suit != state.top.suit {
             let score = Hand::new(state.hand.clone(), suit).z_score(None);
-            //println!("{:?}: z-score for {} is {}", self.seat, suit, score);
-            if score >= MIN_Z_SCORE {
-                return ActionData::BidOther {
-                    suit: best.1,
-                    alone: score >= MIN_LONER_Z_SCORE,
-                };
-            } else if score > best.0 {
+            if score > best.0 {
                 best = (score, suit);
             }
         }
     }
-    if state.seat == state.dealer {
+    if best.0 >= MIN_Z_SCORE || state.seat == state.dealer {
         ActionData::BidOther {
             suit: best.1,
-            alone: false,
+            alone: best.0 >= MIN_LONER_Z_SCORE,
         }
     } else {
         ActionData::Pass

@@ -306,14 +306,19 @@ impl Round {
         });
     }
 
+    pub fn trick_counts(&self) -> HashMap<Team, u8> {
+        let mut count: HashMap<_, u8> = HashMap::new();
+        for t in &self.tricks {
+            *count.entry(Team::from(t.best().0)).or_default() += 1;
+        }
+        count
+    }
+
     pub fn outcome(&self) -> Option<Outcome> {
         let contract = self.contract.expect("contract must be set");
+        let counts = self.trick_counts();
         let makers = Team::from(contract.maker);
-        let makers_tricks = self
-            .tricks
-            .iter()
-            .filter(|t| Team::from(t.best().0) == makers)
-            .count();
+        let makers_tricks = counts.get(&makers).copied().unwrap_or(0).into();
         let total_tricks = self.tricks.len();
         if total_tricks - makers_tricks >= 3 {
             // Euchred! No need to keep playing.
@@ -346,15 +351,28 @@ impl<'a> PlayerState<'a> {
     pub fn current_trick(&self) -> Option<&Trick> {
         self.tricks.last()
     }
+
+    pub fn trick_counts(&self) -> HashMap<Team, u8> {
+        let mut count: HashMap<_, u8> = HashMap::new();
+        if let Some(contract) = self.contract {
+            let trick_size = if contract.alone { 3 } else { 4 };
+            for t in self.tricks {
+                if t.len() == trick_size {
+                    *count.entry(Team::from(t.best().0)).or_default() += 1;
+                }
+            }
+        }
+        count
+    }
 }
 
 #[derive(Debug)]
-pub struct LoggedRound {
+pub struct LoggingRound {
     round: Round,
     log: Log,
     cursor: Option<Id>,
 }
-impl From<InitialState> for LoggedRound {
+impl From<InitialState> for LoggingRound {
     fn from(initial: InitialState) -> Self {
         Self {
             log: Log::new(initial.clone()),
@@ -363,13 +381,13 @@ impl From<InitialState> for LoggedRound {
         }
     }
 }
-impl From<LoggedRound> for RawLog {
-    fn from(value: LoggedRound) -> Self {
+impl From<LoggingRound> for RawLog {
+    fn from(value: LoggingRound) -> Self {
         value.log.into()
     }
 }
 
-impl LoggedRound {
+impl LoggingRound {
     pub fn random() -> Self {
         rand::random::<InitialState>().into()
     }
@@ -379,6 +397,7 @@ impl LoggedRound {
             pub fn next(&self) -> Option<ExpectAction>;
             pub fn pop_event(&mut self) -> Option<Event>;
             pub fn player_state(&self, seat: Seat) -> PlayerState<'_>;
+            pub fn trick_counts(&self) -> HashMap<Team, u8>;
             pub fn outcome(&self) -> Option<Outcome>;
         }
     }

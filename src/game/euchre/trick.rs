@@ -55,7 +55,7 @@ impl Trick {
     pub fn get_card(&self, seat: Seat) -> Option<Card> {
         self.cards
             .iter()
-            .find_map(|(d, c)| if *d == seat { Some(*c) } else { None })
+            .find_map(|(s, c)| if *s == seat { Some(*c) } else { None })
     }
 
     /// Validate that the player is following the lead suit where possible.

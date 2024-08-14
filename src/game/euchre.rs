@@ -12,18 +12,15 @@ mod player;
 mod round;
 mod seat;
 mod trick;
+mod tui;
 pub use action::{Action, ActionData, ActionType, ExpectAction};
 pub use card::{Card, Deck, Rank, Suit};
 pub use error::{PlayerError, RoundError};
-pub use player::Player;
-pub use round::{Outcome, PlayerState, Round};
+pub use player::{Console, Player, Robot};
+pub use round::{LoggingRound, Outcome, PlayerState, RawLog, Round};
 pub use seat::{Seat, Team};
 pub use trick::Trick;
-
-use self::{
-    player::{Console, Robot},
-    round::{LoggedRound, RawLog},
-};
+pub use tui::{Tui, tui_init, tui_restore};
 
 /*
 /// A euchre game consists of a set of players.
@@ -84,7 +81,7 @@ pub fn cli_main() {
     let console = Console::default().into_player();
     let robot = Robot::default().into_player();
 
-    let mut round = LoggedRound::random();
+    let mut round = LoggingRound::random();
     for my_seat in [Seat::South] {
         round.restart();
         println!("You are {my_seat}");
