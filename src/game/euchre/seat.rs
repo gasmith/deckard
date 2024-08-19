@@ -59,6 +59,15 @@ impl Seat {
         Some(dir)
     }
 
+    pub fn to_abbr(self) -> char {
+        match self {
+            Seat::North => 'N',
+            Seat::East => 'E',
+            Seat::South => 'S',
+            Seat::West => 'W',
+        }
+    }
+
     /// The opposite table position.
     pub fn opposite(self) -> Seat {
         match self {
@@ -113,6 +122,13 @@ impl Display for Team {
     }
 }
 impl Team {
+    pub fn to_abbr(self) -> &'static str {
+        match self {
+            Team::NorthSouth => "N/S",
+            Team::EastWest => "E/W",
+        }
+    }
+
     /// Returns the other team.
     pub fn other(self) -> Team {
         match self {

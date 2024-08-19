@@ -217,6 +217,7 @@ fn follow_trick(state: PlayerState) -> ActionData {
     //  - When discarding, can I void a suit?
     //
     let position = trick.cards.len();
+    let final_position = if contract.alone { 2 } else { 3 };
     let partner_winning = trick.best().0 == state.seat.opposite();
 
     let (losing, winning): (Vec<_>, Vec<_>) = cards
@@ -226,7 +227,7 @@ fn follow_trick(state: PlayerState) -> ActionData {
     let card = if winning.is_empty() {
         // Always lose with the least-valued card.
         least_valuable(losing, trump)
-    } else if position == 3 {
+    } else if position == final_position {
         // If playing last, we have a choice:
         if partner_winning && !losing.is_empty() {
             // If our partner is winning, let them win.

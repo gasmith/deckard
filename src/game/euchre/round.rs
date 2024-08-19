@@ -62,6 +62,11 @@ impl InitialState {
         Self { dealer, hands, top }.validate()
     }
 
+    fn random_with_dealer(dealer: Seat) -> Self {
+        let deck = rand::random();
+        Self::new(dealer, deck).expect("deck is valid")
+    }
+
     fn validate(self) -> Result<Self, RoundError> {
         let mut seen: HashSet<_> = self
             .hands
@@ -364,6 +369,18 @@ impl<'a> PlayerState<'a> {
         }
         count
     }
+
+    pub fn sorted_hand(&self) -> Vec<Card> {
+        let mut cards = self.hand.clone();
+        if let Some(contract) = self.contract {
+            cards.sort_unstable_by_key(|c| {
+                (c.effective_suit(contract.suit), c.value(contract.suit, *c))
+            });
+        } else {
+            cards.sort_unstable_by_key(|c| (c.suit, c.rank));
+        }
+        cards
+    }
 }
 
 #[derive(Debug)]
@@ -390,6 +407,14 @@ impl From<LoggingRound> for RawLog {
 impl LoggingRound {
     pub fn random() -> Self {
         rand::random::<InitialState>().into()
+    }
+
+    pub fn random_with_dealer(dealer: Seat) -> Self {
+        InitialState::random_with_dealer(dealer).into()
+    }
+
+    pub fn next_round(&self) -> Self {
+        LoggingRound::random_with_dealer(self.round.dealer.next())
     }
 
     delegate! {

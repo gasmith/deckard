@@ -3,6 +3,7 @@ use std::{fmt::Display, str::FromStr};
 use ansi_term::ANSIString;
 use itertools::iproduct;
 use rand::prelude::*;
+use ratatui::text::Span;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +30,14 @@ impl Suit {
         match self {
             Suit::Club | Suit::Spade => self.to_string().into(),
             Suit::Diamond | Suit::Heart => Red.paint(self.to_string()),
+        }
+    }
+
+    pub fn to_span(&self) -> Span<'static> {
+        use ratatui::style::Color;
+        match self {
+            Suit::Club | Suit::Spade => Span::raw(self.to_string()),
+            Suit::Diamond | Suit::Heart => Span::raw(self.to_string()).style(Color::Red),
         }
     }
 
