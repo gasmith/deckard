@@ -128,6 +128,7 @@ dependencies = [
  "assert_matches",
  "delegate",
  "itertools",
+ "maplit",
  "rand",
  "ratatui",
  "serde",
@@ -256,6 +257,12 @@ checksum = "37ee39891760e7d94734f6f63fedc29a2e4a152f836120753a72503f09fcf904"
 dependencies = [
  "hashbrown",
 ]
+
+[[package]]
+name = "maplit"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "memchr"

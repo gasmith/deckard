@@ -35,8 +35,8 @@ impl Outcome {
 }
 
 /// Initial conditions for a round.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct InitialState {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InitialState {
     dealer: Seat,
     hands: HashMap<Seat, Vec<Card>>,
     top: Card,

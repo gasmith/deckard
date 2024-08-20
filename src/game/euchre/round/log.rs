@@ -7,9 +7,12 @@ use crate::game::euchre::RoundError;
 
 use super::{Action, InitialState};
 
+#[cfg(test)]
+mod test;
+
 pub type Id = u32;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct ActionNode {
     id: Id,
     parent: Option<Id>,
@@ -22,7 +25,7 @@ impl ActionNode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RawLog {
     initial: InitialState,
     actions: Vec<ActionNode>,
@@ -49,9 +52,13 @@ pub struct Log {
 }
 impl From<RawLog> for Log {
     fn from(raw: RawLog) -> Self {
+        let mut max_id = 0;
         let mut children: HashMap<_, Vec<_>> = HashMap::new();
         let mut actions = HashMap::new();
         for action in raw.actions {
+            if action.id > max_id {
+                max_id = action.id;
+            }
             children.entry(action.parent).or_default().push(action.id);
             actions.insert(action.id, action);
         }
@@ -59,7 +66,7 @@ impl From<RawLog> for Log {
             initial: raw.initial,
             actions,
             children,
-            next_id: 0,
+            next_id: max_id + 1,
         }
     }
 }
@@ -82,19 +89,20 @@ impl Log {
         &self.initial
     }
 
-    pub fn find_child(&self, parent: Option<Id>, action: Action) -> Option<Id> {
+    pub fn find_child(&self, parent: Option<Id>, action: &Action) -> Option<Id> {
         self.children
             .get(&parent)
-            .and_then(|ids| ids.iter().find(|id| self.actions[id].action == action))
+            .and_then(|ids| ids.iter().find(|id| &self.actions[id].action == action))
             .copied()
     }
 
     pub fn insert(&mut self, parent: Option<Id>, action: Action) -> Id {
-        let id = self.find_child(parent, action).unwrap_or_else(|| {
+        let id = self.find_child(parent, &action).unwrap_or_else(|| {
             let id = self.next_id;
             self.next_id += 1;
             let node = ActionNode::new(id, parent, action);
-            self.actions.insert(node.id, node);
+            let prev = self.actions.insert(node.id, node);
+            assert!(prev.is_none());
             id
         });
         self.children.entry(parent).or_default().push(id);
