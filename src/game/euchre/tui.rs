@@ -423,19 +423,23 @@ impl Tui {
             let prompt = self.prompt.as_ref().unwrap();
             lines.push("Choose one:".into());
             for (index, choice) in prompt.choices.iter().enumerate() {
-                let mut line: Line = match choice {
-                    ActionData::Pass => "Pass".into(),
-                    ActionData::BidTop { alone: false } => "Pick it up".into(),
-                    ActionData::BidTop { alone: true } => "Go alone".into(),
-                    ActionData::BidOther { suit, alone } => Line::from_iter([
+                let spans: Vec<Span> = match choice {
+                    ActionData::Pass => vec!["Pass".into()],
+                    ActionData::BidTop { alone: false } => vec!["Pick it up".into()],
+                    ActionData::BidTop { alone: true } => vec!["Go alone".into()],
+                    ActionData::BidOther { suit, alone } => vec![
                         "Call ".into(),
                         suit.to_span(),
                         if *alone { " alone" } else { "" }.into(),
-                    ]),
+                    ],
                     _ => unreachable!(),
                 };
-                if index == prompt.index {
-                    line = line.on_dark_gray();
+                let mut line = Line::from(" - ");
+                for mut span in spans {
+                    if index == prompt.index {
+                        span = span.on_dark_gray();
+                    }
+                    line.push_span(span);
                 }
                 lines.push(line)
             }
