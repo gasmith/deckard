@@ -17,7 +17,7 @@ pub use action::{Action, ActionData, ActionType, ExpectAction};
 pub use card::{Card, Deck, Rank, Suit};
 pub use error::{PlayerError, RoundError};
 pub use player::{Console, Player, Robot};
-pub use round::{LoggingRound, Outcome, PlayerState, RawLog, Round};
+pub use round::{LogId, LoggingRound, Outcome, PlayerState, RawLog, Round};
 pub use seat::{Seat, Team};
 pub use trick::Trick;
 pub use tui::{Tui, tui_init, tui_restore};

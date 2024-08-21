@@ -12,10 +12,12 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Paragraph, Row, Table};
 
 mod arena;
+mod history;
 use self::arena::Arena;
+use self::history::{History, HistoryItem};
 
 use super::{
-    Action, ActionData, ActionType, Event, ExpectAction, LoggingRound, Outcome, Player,
+    Action, ActionData, ActionType, Event, ExpectAction, LogId, LoggingRound, Outcome, Player,
     PlayerState, RawLog, Robot, Seat, Suit, Team, Trick,
 };
 
@@ -81,9 +83,15 @@ struct Areas {
     score: Rect,
     info: Rect,
     prompt: Rect,
+    history: Rect,
 }
 impl Areas {
     fn new(frame: &Frame) -> Self {
+        let [game, history] = Layout::new(
+            Direction::Horizontal,
+            [Constraint::Length(40), Constraint::Min(20)],
+        )
+        .areas(frame.area());
         let [arena_score_info, prompt] = Layout::new(
             Direction::Vertical,
             [
@@ -91,7 +99,7 @@ impl Areas {
                 Constraint::Min(4),    // hand, prompt, debug
             ],
         )
-        .areas(frame.area());
+        .areas(game);
         let [arena, score_info] = Layout::new(
             Direction::Horizontal,
             [
@@ -113,6 +121,7 @@ impl Areas {
             score,
             info,
             prompt,
+            history,
         }
     }
 }
@@ -253,6 +262,7 @@ impl Tui {
         frame.render_widget(self.score_widget(&state), areas.score);
         frame.render_widget(self.info_widget(wait, &state), areas.info);
         frame.render_widget(self.prompt_widget(wait, &state), areas.prompt);
+        frame.render_widget(History::new(self.game.round.backtrace()), areas.history);
     }
 
     fn handle_events(&mut self, wait: &Wait) -> io::Result<()> {

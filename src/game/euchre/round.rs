@@ -14,7 +14,7 @@ use super::{
 };
 
 mod log;
-pub use log::{Id, Log, RawLog};
+pub use log::{Id as LogId, Log, RawLog};
 
 /// The outcome of a round.
 #[derive(Debug, Clone)]
@@ -387,7 +387,7 @@ impl<'a> PlayerState<'a> {
 pub struct LoggingRound {
     round: Round,
     log: Log,
-    cursor: Option<Id>,
+    cursor: Option<LogId>,
 }
 impl From<InitialState> for LoggingRound {
     fn from(initial: InitialState) -> Self {
@@ -438,7 +438,7 @@ impl LoggingRound {
         Ok(())
     }
 
-    fn seek(&mut self, id: Id) -> Result<(), RoundError> {
+    pub fn seek(&mut self, id: LogId) -> Result<(), RoundError> {
         self.restart();
         for (id, action) in self.log.backtrace(id)? {
             self.round.apply(action).expect("re-apply always works");
@@ -459,5 +459,11 @@ impl LoggingRound {
     pub fn restart(&mut self) {
         self.cursor = None;
         self.round = Round::from(self.log.initial().clone());
+    }
+
+    pub fn backtrace(&self) -> Vec<(LogId, Action)> {
+        self.cursor
+            .map(|id| self.log.backtrace(id).expect("cursor valid"))
+            .unwrap_or_default()
     }
 }

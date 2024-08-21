@@ -1,6 +1,6 @@
 //! Error types
 
-use super::{round::Id, ActionType, Card, Seat, Suit};
+use super::{ActionType, Card, LogId, Seat, Suit};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum PlayerError {
@@ -36,6 +36,5 @@ pub enum RoundError {
     #[error(transparent)]
     Player(#[from] PlayerError),
     #[error("invalid log id {0}")]
-    InvalidLogId(Id),
+    InvalidLogId(LogId),
 }
-
