@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{self, stdout, Stdout};
 use std::iter::FromIterator;
 
@@ -10,11 +11,12 @@ use ratatui::crossterm::{event, ExecutableCommand};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Paragraph, Row, Table};
 
-use crate::game::euchre::{PlayerState, Trick};
+mod arena;
+use self::arena::Arena;
 
 use super::{
-    Action, ActionData, ActionType, Event, ExpectAction, LoggingRound, Outcome, Player, Robot,
-    Seat, Suit, Team,
+    Action, ActionData, ActionType, Event, ExpectAction, LoggingRound, Outcome, Player,
+    PlayerState, RawLog, Robot, Seat, Suit, Team, Trick,
 };
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -187,6 +189,9 @@ impl Tui {
         Ok(())
     }
 
+    /// Advances the state of the game until an event occurs, or the game is
+    /// blocked waiting on a non-robot player's action. At the end of a round,
+    /// this function will always return immediately with [`Wait::Round`]).
     fn advance(&mut self) -> Option<Wait> {
         loop {
             while let Some(e) = self.game.round.pop_event() {
@@ -237,26 +242,46 @@ impl Tui {
                     continue;
                 }
             }
-            return None;
+            return self.game.round.outcome().map(Wait::Round);
         }
     }
 
     fn render_frame(&mut self, frame: &mut Frame, wait: &Wait) {
         let areas = Areas::new(frame);
-        let p_state = self.game.round.player_state(Seat::South);
-        frame.render_widget(self.arena_widget(wait, &p_state), areas.arena);
-        frame.render_widget(self.score_widget(&p_state), areas.score);
-        frame.render_widget(self.info_widget(wait, &p_state), areas.info);
-        frame.render_widget(self.prompt_widget(wait, &p_state), areas.prompt);
+        let state = self.game.round.player_state(Seat::South);
+        frame.render_widget(Arena::new(wait, &state), areas.arena);
+        frame.render_widget(self.score_widget(&state), areas.score);
+        frame.render_widget(self.info_widget(wait, &state), areas.info);
+        frame.render_widget(self.prompt_widget(wait, &state), areas.prompt);
     }
 
     fn handle_events(&mut self, wait: &Wait) -> io::Result<()> {
+        // Debug output only persists for one refresh cycle.
+        self.debug = None;
+
         match (event::read()?, wait) {
-            // The 'q' key always quits.
-            (event::Event::Key(k), _) if k.code == KeyCode::Char('q') => self.exit = true,
-            (event::Event::Key(k), Wait::Action(expect)) => self.handle_event_for_action(expect, k),
+            // Quit
+            (event::Event::Key(k), _) if k.code == KeyCode::Char('q') => {
+                self.exit = true;
+            }
+
+            // Save game log
+            // TODO: Prompt for filename
+            (event::Event::Key(k), _) if k.code == KeyCode::Char('s') => {
+                let file = File::create("euchre.json").expect("open euchre.json");
+                let log = RawLog::from(&self.game.round);
+                serde_json::to_writer(file, &log).expect("write to euchre.json");
+                self.debug = Some("Wrote to euchre.json".into());
+            }
+
+            // Handle input for next game action.
+            // TODO: Modal interface for selecting history, etc.
+            (event::Event::Key(k), Wait::Action(expect)) => {
+                self.handle_event_for_action(expect, k);
+            }
+
+            // At the end of the round, any key will advance.
             (event::Event::Key(_), Wait::Round(_)) => {
-                // Any key advances to next round.
                 self.game.next_round();
             }
             _ => (),
@@ -283,78 +308,6 @@ impl Tui {
             }
             _ => (),
         }
-    }
-
-    fn arena_widget(&self, wait: &Wait, p_state: &PlayerState<'_>) -> Paragraph<'static> {
-        let lines = match wait {
-            Wait::Deal
-            | Wait::Action(ExpectAction {
-                action: ActionType::BidTop | ActionType::DealerDiscard,
-                ..
-            }) => [
-                Span::raw("N").into_centered_line(),
-                Line::default(),
-                Line::default(),
-                Line::from(vec![
-                    Span::raw("W    "),
-                    p_state.top.to_span(),
-                    Span::raw("    E"),
-                ])
-                .centered(),
-                Line::default(),
-                Line::default(),
-                Span::raw("S").into_centered_line(),
-            ],
-            Wait::Round(_)
-            | Wait::Action(ExpectAction {
-                action: ActionType::BidOther | ActionType::Lead,
-                ..
-            }) => [
-                Span::raw("N").into_centered_line(),
-                Line::default(),
-                Line::default(),
-                Span::raw("W          E").into_centered_line(),
-                Line::default(),
-                Line::default(),
-                Span::raw("S").into_centered_line(),
-            ],
-            Wait::Action(ExpectAction {
-                action: ActionType::Follow,
-                ..
-            }) => [
-                Span::raw("N").into_centered_line(),
-                Line::default(),
-                p_trick_span(p_state, Seat::North).into_centered_line(),
-                Line::from(vec![
-                    Span::raw("W  "),
-                    p_trick_span(p_state, Seat::West),
-                    Span::raw("  "),
-                    p_trick_span(p_state, Seat::East),
-                    Span::raw("  E"),
-                ])
-                .centered(),
-                p_trick_span(p_state, Seat::South).into_centered_line(),
-                Line::default(),
-                Span::raw("S").into_centered_line(),
-            ],
-            Wait::Trick(trick) => [
-                Span::raw("N").into_centered_line(),
-                Line::default(),
-                trick_span(trick, Seat::North).into_centered_line(),
-                Line::from(vec![
-                    Span::raw("W  "),
-                    trick_span(trick, Seat::West),
-                    Span::raw("  "),
-                    trick_span(trick, Seat::East),
-                    Span::raw("  E"),
-                ])
-                .centered(),
-                trick_span(trick, Seat::South).into_centered_line(),
-                Line::default(),
-                Span::raw("S").into_centered_line(),
-            ],
-        };
-        Paragraph::new(Text::from_iter(lines)).block(Block::bordered())
     }
 
     fn score_widget(&self, p_state: &PlayerState<'_>) -> Table<'static> {
@@ -452,18 +405,4 @@ impl Tui {
         }
         Paragraph::new(lines)
     }
-}
-
-fn trick_span(trick: &Trick, seat: Seat) -> Span<'static> {
-    trick
-        .get_card(seat)
-        .map(|c| c.to_span())
-        .unwrap_or(Span::raw("  "))
-}
-
-fn p_trick_span(p_state: &PlayerState<'_>, seat: Seat) -> Span<'static> {
-    p_state
-        .current_trick()
-        .map(|t| trick_span(t, seat))
-        .unwrap_or(Span::raw("  "))
 }

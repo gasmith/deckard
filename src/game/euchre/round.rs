@@ -400,7 +400,12 @@ impl From<InitialState> for LoggingRound {
 }
 impl From<LoggingRound> for RawLog {
     fn from(value: LoggingRound) -> Self {
-        value.log.into()
+        RawLog::from(value.log)
+    }
+}
+impl<'a> From<&'a LoggingRound> for RawLog {
+    fn from(value: &'a LoggingRound) -> Self {
+        RawLog::from(&value.log)
     }
 }
 

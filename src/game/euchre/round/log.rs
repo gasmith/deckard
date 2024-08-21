@@ -42,6 +42,19 @@ impl From<Log> for RawLog {
         }
     }
 }
+impl<'a> From<&'a Log> for RawLog {
+    fn from(log: &'a Log) -> Self {
+        RawLog {
+            initial: log.initial.clone(),
+            actions: log
+                .actions
+                .values()
+                .sorted_unstable_by_key(|a| a.id)
+                .cloned()
+                .collect(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Log {
