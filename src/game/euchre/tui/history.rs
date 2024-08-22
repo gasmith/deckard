@@ -1,4 +1,8 @@
 //! Widget for the history prompt
+//!
+//! TODO:
+//!  - Add a "deal" pseudo-item
+//!  - Tree structure!
 
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
