@@ -50,7 +50,7 @@ impl ActionChoice {
 
     fn list(self) -> List<'static> {
         List::new(self.choices)
-            .highlight_style(Style::default().add_modifier(Modifier::ITALIC))
+            .highlight_style(Style::default().reversed())
             .highlight_symbol(">>")
     }
 }

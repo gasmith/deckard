@@ -16,9 +16,10 @@ use super::Mode;
 enum First {
     Dealer(Seat),
     Contract(Contract),
+    Empty,
 }
 impl First {
-    fn to_line(self) -> Line<'static> {
+    fn into_line(self) -> Line<'static> {
         match self {
             Self::Dealer(dealer) => format!("{} dealt.", dealer).into(),
             Self::Contract(contract) => Line::from_iter([
@@ -26,6 +27,7 @@ impl First {
                 contract.suit.to_span(),
                 if contract.alone { " alone." } else { "." }.into(),
             ]),
+            _ => Line::default(),
         }
     }
 }
@@ -36,7 +38,7 @@ enum Second {
     Empty,
 }
 impl Second {
-    fn to_line(self) -> Line<'static> {
+    fn into_line(self) -> Line<'static> {
         match self {
             Self::Event(Event::Trick(trick)) => {
                 format!("{} takes the trick.", trick.best().0).into()
@@ -59,9 +61,10 @@ impl Info {
     pub fn new<R: Round>(mode: &Mode, game: &Game<R>) -> Self {
         let round = game.round();
 
-        let first = match round.contract() {
-            Some(contract) => First::Contract(contract),
-            None => First::Dealer(round.dealer()),
+        let first = match (mode, round.contract()) {
+            (Mode::Event(Event::Game(_)), _) => First::Empty,
+            (_, Some(contract)) => First::Contract(contract),
+            (_, None) => First::Dealer(round.dealer()),
         };
 
         let second = match (mode, round.next_action()) {
@@ -79,7 +82,7 @@ impl Widget for Info {
     where
         Self: Sized,
     {
-        Paragraph::new(Text::from_iter([self.0.to_line(), self.1.to_line()]))
+        Paragraph::new(Text::from_iter([self.0.into_line(), self.1.into_line()]))
             .block(Block::bordered())
             .render(area, buf)
     }

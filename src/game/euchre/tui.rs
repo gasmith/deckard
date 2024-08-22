@@ -120,8 +120,8 @@ impl Mode {
     fn action_choice(choice: ActionChoice) -> Self {
         Self::ActionChoice(choice, ActionChoiceState::default().with_selected(Some(0)))
     }
-    fn history(history: History) -> Self {
-        Self::History(history, HistoryState::default().with_selected(Some(0)))
+    fn history(history: History, selected: Option<usize>) -> Self {
+        Self::History(history, HistoryState::default().with_selected(selected))
     }
 }
 
@@ -168,7 +168,7 @@ impl Tui {
         frame.render_widget(Info::new(&self.mode, &self.game), areas.info);
         if let Mode::Hand(hand, state) = &mut self.mode {
             frame.render_stateful_widget(hand.clone(), areas.hand, state);
-        } else {
+        } else if !matches!(self.mode, Mode::Event(Event::Game(_))) {
             let seat = HUMAN_SEAT;
             let hand = round.player_state(seat).sorted_hand();
             frame.render_widget(Hand::new(seat, hand), areas.hand);
@@ -215,6 +215,7 @@ impl Tui {
             (_, KeyCode::Char('!')) => self.enter_history_mode(),
 
             // Events are informational, any key steps forward.
+            (Mode::Event(Event::Game(_)), _) => (),
             (Mode::Event(_), _) => self.game_step(),
 
             // Hand management.
@@ -250,11 +251,22 @@ impl Tui {
             // History browser.
             (Mode::History(history, state), KeyCode::Enter | KeyCode::Char(' ')) => {
                 if let Some(id) = history.selected(state) {
-                    self.seek_round_history(id)
+                    self.seek_round_history(id);
+                    self.game_step();
                 }
             }
-            (Mode::History(_, s), KeyCode::Up | KeyCode::Char('k')) => s.select_previous(),
-            (Mode::History(_, s), KeyCode::Down | KeyCode::Char('j')) => s.select_next(),
+            (Mode::History(history, state), KeyCode::Up | KeyCode::Char('k')) => {
+                state.select_previous();
+                if let Some(id) = history.selected(state) {
+                    self.seek_round_history(id);
+                }
+            }
+            (Mode::History(history, state), KeyCode::Down | KeyCode::Char('j')) => {
+                state.select_next();
+                if let Some(id) = history.selected(state) {
+                    self.seek_round_history(id);
+                }
+            }
 
             _ => (),
         }
@@ -327,16 +339,18 @@ impl Tui {
 
     /// Enters history browser mode.
     fn enter_history_mode(&mut self) {
-        self.mode = Mode::history(History::new(self.game.round().backtrace()))
+        let round = self.game.round();
+        let history = History::new(round.log());
+        let index = history.position(round.cursor());
+        self.mode = Mode::history(history, index)
     }
 
     /// Seeks to a particular point in round history.
-    fn seek_round_history(&mut self, id: LogId) {
+    fn seek_round_history(&mut self, id: Option<LogId>) {
         if let Err(e) = self.game.round_mut().seek(id) {
             self.error = Some(e.to_string())
         } else {
             while self.game.round_mut().pop_event().is_some() {}
-            self.game_step()
         }
     }
 }

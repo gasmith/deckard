@@ -53,6 +53,14 @@ impl Round for LoggingRound {
 }
 
 impl LoggingRound {
+    pub fn cursor(&self) -> Option<LogId> {
+        self.cursor
+    }
+
+    pub fn log(&self) -> &Log {
+        &self.log
+    }
+
     pub fn random() -> Self {
         rand::random::<InitialState>().into()
     }
@@ -66,11 +74,13 @@ impl LoggingRound {
         self.round = BaseRound::from(self.log.initial().clone());
     }
 
-    pub fn seek(&mut self, id: LogId) -> Result<(), RoundError> {
+    pub fn seek(&mut self, id: Option<LogId>) -> Result<(), RoundError> {
         self.restart();
-        for (id, action) in self.log.backtrace(id)? {
-            self.round.apply_action(action)?;
-            self.cursor = Some(id);
+        if let Some(id) = id {
+            for (id, action) in self.log.backtrace(id)? {
+                self.round.apply_action(action)?;
+                self.cursor = Some(id);
+            }
         }
         Ok(())
     }

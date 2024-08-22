@@ -16,6 +16,7 @@ impl Arena {
     pub fn new(mode: &Mode, round: &impl Round) -> Self {
         let action = round.next_action().map(|expect| expect.action);
         let top = match (mode, action) {
+            (Mode::Event(Event::Game(_)), _) => None,
             (Mode::Event(Event::Deal(_, _)), _) | (_, Some(ActionType::BidTop)) => {
                 Some(round.top_card())
             }
