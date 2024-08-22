@@ -69,7 +69,8 @@ fn bid_top(state: PlayerState) -> ActionData {
             // Hence the +1.
             score = hand.z_score(None) + 1;
         }
-        ActionData::BidTop {
+        ActionData::Call {
+            suit: state.top.suit,
             alone: score >= MIN_LONER_Z_SCORE,
         }
     } else if score + 2 >= MIN_Z_SCORE
@@ -80,7 +81,10 @@ fn bid_top(state: PlayerState) -> ActionData {
             .all(|s| score > Hand::new(state.hand.clone(), *s).z_score(None))
     {
         //println!("{:?}: Better than getting stuck...", self.seat);
-        ActionData::BidTop { alone: false }
+        ActionData::Call {
+            suit: state.top.suit,
+            alone: false,
+        }
     } else {
         ActionData::Pass
     }
@@ -97,7 +101,7 @@ fn bid_other(state: PlayerState) -> ActionData {
         }
     }
     if best.0 >= MIN_Z_SCORE || state.seat == state.dealer {
-        ActionData::BidOther {
+        ActionData::Call{
             suit: best.1,
             alone: best.0 >= MIN_LONER_Z_SCORE,
         }

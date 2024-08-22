@@ -33,7 +33,7 @@ impl Hand {
         for card in self.cards {
             let mut card_span = card.to_span();
             if selected.is_some_and(|c| c == card) {
-                card_span = card_span.on_dark_gray();
+                card_span = card_span.reversed();
             }
             spans.push(card_span);
             spans.push(" ".into());

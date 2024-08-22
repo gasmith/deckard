@@ -109,9 +109,11 @@ impl BaseRound {
     fn handle(&mut self, Action { seat, action, data }: Action) -> Result<(), RoundError> {
         match (action, data) {
             (ActionType::BidTop, ActionData::Pass) => self.pass_top(seat),
-            (ActionType::BidTop, ActionData::BidTop { alone }) => self.bid_top(seat, alone),
+            (ActionType::BidTop, ActionData::Call { suit, alone }) => {
+                self.bid_top(seat, suit, alone)?
+            }
             (ActionType::BidOther, ActionData::Pass) => self.pass_other(seat)?,
-            (ActionType::BidOther, ActionData::BidOther { suit, alone }) => {
+            (ActionType::BidOther, ActionData::Call { suit, alone }) => {
                 self.bid_other(seat, suit, alone)?
             }
             (ActionType::DealerDiscard, ActionData::Card { card }) => {
@@ -132,19 +134,20 @@ impl BaseRound {
         }
     }
 
-    fn bid_top(&mut self, maker: Seat, alone: bool) {
-        let contract = Contract {
-            maker,
-            suit: self.top.suit,
-            alone,
-        };
-        self.contract = Some(contract);
-        self.hands
-            .get_mut(&self.dealer)
-            .expect("hands populated")
-            .push(self.top);
-        self.next_action = Some(ExpectAction::new(self.dealer, ActionType::DealerDiscard));
-        self.events.push_back(Event::Bid(contract));
+    fn bid_top(&mut self, maker: Seat, suit: Suit, alone: bool) -> Result<(), PlayerError> {
+        if suit != self.top.suit {
+            Err(PlayerError::MustCallTopSuit(self.top.suit))
+        } else {
+            let contract = Contract { maker, suit, alone };
+            self.contract = Some(contract);
+            self.hands
+                .get_mut(&self.dealer)
+                .expect("hands populated")
+                .push(self.top);
+            self.next_action = Some(ExpectAction::new(self.dealer, ActionType::DealerDiscard));
+            self.events.push_back(Event::Bid(contract));
+            Ok(())
+        }
     }
 
     fn pass_other(&mut self, seat: Seat) -> Result<(), PlayerError> {
@@ -158,7 +161,7 @@ impl BaseRound {
 
     fn bid_other(&mut self, maker: Seat, suit: Suit, alone: bool) -> Result<(), PlayerError> {
         if suit == self.top.suit {
-            Err(PlayerError::CannotBidTopSuit(self.top.suit))
+            Err(PlayerError::CannotCallTopSuit(self.top.suit))
         } else {
             let contract = Contract { maker, suit, alone };
             self.contract = Some(contract);

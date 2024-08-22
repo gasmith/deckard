@@ -58,13 +58,7 @@ impl<'a> From<HistoryItem> for ListItem<'a> {
         let mut spans = vec![Span::from(action.seat.to_string())];
         match (action.action, action.data) {
             (_, ActionData::Pass) => spans.push(" passed".into()),
-            (_, ActionData::BidTop { alone }) => {
-                spans.push(" bid top ".into());
-                if alone {
-                    spans.push(" alone".into())
-                }
-            }
-            (_, ActionData::BidOther { suit, alone }) => {
+            (_, ActionData::Call { suit, alone }) => {
                 spans.extend([" called ".into(), suit.to_span()]);
                 if alone {
                     spans.push(" alone".into());

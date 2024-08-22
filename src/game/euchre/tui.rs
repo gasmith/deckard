@@ -289,7 +289,10 @@ impl Tui {
                 if seat == HUMAN_SEAT {
                     // Switch mode for human input.
                     self.mode = match action {
-                        ActionType::BidTop => Mode::action_choice(ActionChoice::bid_top()),
+                        ActionType::BidTop => {
+                            let top_suit = self.game.round().top_card().suit;
+                            Mode::action_choice(ActionChoice::bid_top(top_suit))
+                        }
                         ActionType::BidOther => {
                             let top_suit = self.game.round().top_card().suit;
                             Mode::action_choice(ActionChoice::bid_other(top_suit))

@@ -8,9 +8,13 @@ pub enum PlayerError {
     #[error("the dealer must bid")]
     DealerMustBidOther,
 
-    /// Cannot bid the same suit as the top card.
-    #[error("cannot bid {0}")]
-    CannotBidTopSuit(Suit),
+    /// Must call the same suit as the top card.
+    #[error("must call {0}")]
+    MustCallTopSuit(Suit),
+
+    /// Cannot call the same suit as the top card.
+    #[error("cannot call {0}")]
+    CannotCallTopSuit(Suit),
 
     /// The player doesn't actually hold the card they attempted to play.
     #[error("{0} does not hold {1}")]

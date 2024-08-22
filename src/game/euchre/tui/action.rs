@@ -17,11 +17,11 @@ impl ActionChoice {
         Self { choices }
     }
 
-    pub fn bid_top() -> Self {
+    pub fn bid_top(suit: Suit) -> Self {
         Self::new(vec![
             ActionData::Pass,
-            ActionData::BidTop { alone: false },
-            ActionData::BidTop { alone: true },
+            ActionData::Call { suit, alone: false },
+            ActionData::Call { suit, alone: true },
         ])
     }
 
@@ -30,7 +30,7 @@ impl ActionChoice {
         for alone in [false, true] {
             for &suit in Suit::all_suits() {
                 if suit != top_suit {
-                    choices.push(ActionData::BidOther { suit, alone })
+                    choices.push(ActionData::Call { suit, alone })
                 }
             }
         }
@@ -59,9 +59,7 @@ impl From<ActionData> for ListItem<'static> {
     fn from(action: ActionData) -> Self {
         let spans: Vec<Span> = match action {
             ActionData::Pass => vec!["Pass".into()],
-            ActionData::BidTop { alone: false } => vec!["Pick it up".into()],
-            ActionData::BidTop { alone: true } => vec!["Go alone".into()],
-            ActionData::BidOther { suit, alone } => vec![
+            ActionData::Call { suit, alone } => vec![
                 "Call ".into(),
                 suit.to_span(),
                 if alone { " alone" } else { "" }.into(),

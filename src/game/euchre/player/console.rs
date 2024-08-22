@@ -91,7 +91,10 @@ impl Console {
         println!("Hand: {}", self.format_cards(state.hand));
         if prompt::<bool, _>("Bid top? ") {
             let alone = prompt::<bool, _>("Alone? ");
-            ActionData::BidTop { alone }
+            ActionData::Call {
+                suit: state.top.suit,
+                alone,
+            }
         } else {
             ActionData::Pass
         }
@@ -101,7 +104,7 @@ impl Console {
         if prompt::<bool, _>("Bid other? ") {
             let suit = prompt::<Suit, _>("Suit? ");
             let alone = prompt::<bool, _>("Alone? ");
-            ActionData::BidOther { suit, alone }
+            ActionData::Call { suit, alone }
         } else {
             ActionData::Pass
         }

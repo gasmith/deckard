@@ -27,8 +27,7 @@ impl Display for ActionType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionData {
     Pass,
-    BidTop { alone: bool },
-    BidOther { suit: Suit, alone: bool },
+    Call { suit: Suit, alone: bool },
     Card { card: Card },
 }
 
