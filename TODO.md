@@ -12,3 +12,9 @@
    - Launch directly into exploration mode from a save file (no game).
  - Collapsible branches in history widget.
    - Sigil? "(+N)" suffix?
+
+# Development
+
+ - Long-term: Game abstraction layer
+   - Common traits for core state machine & log functionality?
+   - Wait until we have a second game. Hearts? Spades? Sheepshead?

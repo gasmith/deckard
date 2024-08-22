@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-use super::{Card, Seat, Suit};
+use crate::euchre::{Card, Seat, Suit};
 
 #[derive(Debug, Clone)]
 pub struct Trick {
@@ -93,7 +93,7 @@ impl Trick {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::game::euchre::Rank;
+    use crate::euchre::Rank;
 
     fn trick(trump: char, cards: &[&str]) -> Trick {
         let trump = Suit::from_char(trump).unwrap();

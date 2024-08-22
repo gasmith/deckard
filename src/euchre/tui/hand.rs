@@ -3,7 +3,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 
-use crate::game::euchre::{Card, Seat};
+use crate::euchre::{Card, Seat};
 
 pub type HandState = ListState;
 

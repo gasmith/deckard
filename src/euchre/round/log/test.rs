@@ -2,10 +2,7 @@ use std::str::FromStr;
 
 use maplit::hashmap;
 
-use crate::{
-    french::Suit,
-    game::euchre::{ActionData, ActionType, Card, Seat},
-};
+use crate::euchre::{ActionData, ActionType, Card, Seat, Suit};
 
 use super::*;
 
@@ -17,8 +14,8 @@ fn hand(cards: [&str; 5]) -> Vec<Card> {
     cards.iter().map(card).collect()
 }
 
-fn initial_state_fixture() -> InitialState {
-    InitialState {
+fn config_fixture() -> RoundConfig {
+    RoundConfig {
         dealer: Seat::North,
         hands: hashmap! {
             Seat::North => hand(["ad", "qs", "jh", "th", "9h"]),
@@ -31,7 +28,7 @@ fn initial_state_fixture() -> InitialState {
 }
 
 fn raw_log_fixture() -> RawLog {
-    let initial = initial_state_fixture();
+    let config = config_fixture();
     let actions = vec![
         ActionNode {
             id: 0,
@@ -165,7 +162,7 @@ fn raw_log_fixture() -> RawLog {
             ),
         },
     ];
-    RawLog { initial, actions }
+    RawLog { config, actions }
 }
 
 fn log_fixture() -> Log {

@@ -11,9 +11,7 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, ListState, Padding, Widget};
 
-use crate::game::euchre::round::Log;
-
-use super::{Action, ActionData, ActionType, LogId};
+use crate::euchre::{Action, ActionData, ActionType, Log, LogId};
 
 pub type HistoryState = ListState;
 

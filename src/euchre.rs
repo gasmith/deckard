@@ -14,15 +14,18 @@ mod round;
 mod seat;
 mod trick;
 mod tui;
-pub use action::{Action, ActionData, ActionType, ExpectAction};
-pub use card::{Card, Deck, Rank, Suit};
-pub use error::{PlayerError, RoundError};
-pub use game::{Game, GameOutcome};
-pub use player::{Console, Player, Robot};
-pub use round::{BaseRound, LogId, LoggingRound, PlayerState, RawLog, Round, RoundOutcome};
-pub use seat::{Seat, Team};
-pub use trick::Trick;
-pub use tui::{tui_init, tui_restore, Tui};
+pub use self::action::{Action, ActionData, ActionType, ExpectAction};
+pub use self::card::{Card, Deck, Rank, Suit};
+pub use self::error::{PlayerError, RoundError};
+pub use self::game::{Game, GameOutcome};
+pub use self::player::{Console, Player, Robot};
+pub use self::round::{
+    BaseRound, Log, LogId, LoggingRound, PlayerState, RawLog, Round, RoundConfig, RoundOutcome,
+    Tricks,
+};
+pub use self::seat::{Seat, Team};
+pub use self::trick::Trick;
+pub use self::tui::{tui_init, tui_restore, Tui};
 
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -40,6 +43,7 @@ pub struct Contract {
     pub alone: bool,
 }
 
+#[allow(dead_code)]
 pub fn cli_main() {
     let console = Console::default().into_player();
     let robot = Robot::default().into_player();
@@ -72,4 +76,11 @@ pub fn cli_main() {
     }
     let log = RawLog::from(round);
     serde_json::to_writer(std::io::stderr(), &log).unwrap();
+}
+
+pub fn tui_main() {
+    let tui = Tui::default();
+    let terminal = tui_init().unwrap();
+    tui.run(terminal).unwrap();
+    tui_restore().unwrap();
 }

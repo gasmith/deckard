@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::{round::InitialState, Round, Team};
+use super::{Round, RoundConfig, Team};
 
 #[derive(Debug, Clone)]
 pub struct GameOutcome {
@@ -17,11 +17,11 @@ pub struct Game<R> {
 
 impl<R> Default for Game<R>
 where
-    R: Round + From<InitialState>,
+    R: Round + From<RoundConfig>,
 {
     fn default() -> Self {
         Self {
-            round: InitialState::random().into(),
+            round: RoundConfig::random().into(),
             score: [(Team::NorthSouth, 0), (Team::EastWest, 0)]
                 .iter()
                 .copied()
@@ -61,13 +61,13 @@ where
 
 impl<R> Game<R>
 where
-    R: Round + From<InitialState>,
+    R: Round + From<RoundConfig>,
 {
     pub fn next_round(&mut self) {
         let outcome = self.round.outcome().expect("round must be over");
         let score = self.score.entry(outcome.team).or_default();
         *score += outcome.points;
         let dealer = self.round.dealer().next();
-        self.round = InitialState::random_with_dealer(dealer).into();
+        self.round = RoundConfig::random_with_dealer(dealer).into();
     }
 }

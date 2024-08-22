@@ -3,7 +3,7 @@
 use ratatui::widgets::{Block, Widget};
 use ratatui::{prelude::*, widgets::Paragraph};
 
-use crate::game::euchre::{ActionType, Card, Event, Round, Seat, Trick};
+use crate::euchre::{ActionType, Card, Event, Round, Seat, Trick};
 
 use super::Mode;
 

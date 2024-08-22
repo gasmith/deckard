@@ -3,8 +3,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use super::{
-    Action, ActionData, ActionType, Card, Contract, Deck, Event, ExpectAction, InitialState,
-    PlayerError, PlayerState, Round, RoundError, Seat, Suit, Trick, Tricks,
+    Action, ActionData, ActionType, Card, Contract, Event, ExpectAction, PlayerError, PlayerState,
+    Round, RoundConfig, RoundError, Seat, Suit, Trick, Tricks,
 };
 
 /// The main state machine for the round.
@@ -27,16 +27,18 @@ pub struct BaseRound {
     next_action: Option<ExpectAction>,
 }
 
-impl From<InitialState> for BaseRound {
-    fn from(initial: InitialState) -> Self {
+impl From<RoundConfig> for BaseRound {
+    fn from(config: RoundConfig) -> Self {
+        let dealer = config.dealer;
+        let top = config.top;
         BaseRound {
-            dealer: initial.dealer,
-            hands: initial.hands,
-            top: initial.top,
+            dealer,
+            hands: config.hands,
+            top,
             contract: None,
             tricks: Tricks::default(),
-            events: [Event::Deal(initial.dealer, initial.top)].into(),
-            next_action: Some(ExpectAction::new(initial.dealer.next(), ActionType::BidTop)),
+            events: [Event::Deal(dealer, top)].into(),
+            next_action: Some(ExpectAction::new(dealer.next(), ActionType::BidTop)),
         }
     }
 }
@@ -98,14 +100,6 @@ fn filter_seat(contract: &Contract, seat: Seat) -> Seat {
 }
 
 impl BaseRound {
-    pub fn random() -> Self {
-        rand::random::<InitialState>().into()
-    }
-
-    pub fn new(dealer: Seat, deck: Deck) -> Result<Self, RoundError> {
-        InitialState::new(dealer, deck).map(Self::from)
-    }
-
     fn handle(&mut self, Action { seat, action, data }: Action) -> Result<(), RoundError> {
         match (action, data) {
             (ActionType::BidTop, ActionData::Pass) => self.pass_top(seat),

@@ -76,21 +76,21 @@ pub trait Round {
     }
 }
 
-/// Initial conditions for a round.
+/// Configuration & initial conditions for a round.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct InitialState {
+pub struct RoundConfig {
     dealer: Seat,
     hands: HashMap<Seat, Vec<Card>>,
     top: Card,
 }
 
-impl Distribution<InitialState> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> InitialState {
-        InitialState::new(rng.gen(), rng.gen()).expect("deck is valid")
+impl Distribution<RoundConfig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RoundConfig {
+        RoundConfig::new(rng.gen(), rng.gen()).expect("deck is valid")
     }
 }
 
-impl InitialState {
+impl RoundConfig {
     pub fn new(dealer: Seat, mut deck: Deck) -> Result<Self, RoundError> {
         if deck.len() < 24 {
             return Err(RoundError::IncompleteDeck);
@@ -105,7 +105,7 @@ impl InitialState {
     }
 
     pub fn random() -> Self {
-        rand::random::<InitialState>().into()
+        rand::random::<RoundConfig>().into()
     }
 
     pub fn random_with_dealer(dealer: Seat) -> Self {

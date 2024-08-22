@@ -6,9 +6,9 @@ use std::{
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::game::euchre::RoundError;
+use crate::euchre::{Action, RoundError};
 
-use super::{Action, InitialState};
+use super::RoundConfig;
 
 #[cfg(test)]
 mod test;
@@ -30,13 +30,13 @@ impl ActionNode {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RawLog {
-    initial: InitialState,
+    config: RoundConfig,
     actions: Vec<ActionNode>,
 }
 impl From<Log> for RawLog {
     fn from(log: Log) -> Self {
         RawLog {
-            initial: log.initial,
+            config: log.config,
             actions: log
                 .actions
                 .into_values()
@@ -48,7 +48,7 @@ impl From<Log> for RawLog {
 impl<'a> From<&'a Log> for RawLog {
     fn from(log: &'a Log) -> Self {
         RawLog {
-            initial: log.initial.clone(),
+            config: log.config.clone(),
             actions: log
                 .actions
                 .values()
@@ -61,7 +61,7 @@ impl<'a> From<&'a Log> for RawLog {
 
 #[derive(Debug, Clone)]
 pub struct Log {
-    initial: InitialState,
+    config: RoundConfig,
     actions: HashMap<Id, ActionNode>,
     children: HashMap<Option<Id>, Vec<Id>>,
     next_id: Id,
@@ -79,7 +79,7 @@ impl From<RawLog> for Log {
             actions.insert(action.id, action);
         }
         Log {
-            initial: raw.initial,
+            config: raw.config,
             actions,
             children,
             next_id: max_id + 1,
@@ -88,21 +88,17 @@ impl From<RawLog> for Log {
 }
 
 impl Log {
-    pub fn new(initial: InitialState) -> Self {
+    pub fn new(config: RoundConfig) -> Self {
         Self {
-            initial,
+            config,
             actions: HashMap::default(),
             children: HashMap::default(),
             next_id: 0,
         }
     }
 
-    pub fn into_raw(self) -> RawLog {
-        self.into()
-    }
-
-    pub fn initial(&self) -> &InitialState {
-        &self.initial
+    pub fn config(&self) -> &RoundConfig {
+        &self.config
     }
 
     pub fn find_child(&self, parent: Option<Id>, action: &Action) -> Option<Id> {

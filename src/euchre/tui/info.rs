@@ -7,9 +7,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::game::euchre::{
-    Contract, Event, ExpectAction, Game, GameOutcome, Round, RoundOutcome, Seat,
-};
+use crate::euchre::{Contract, Event, ExpectAction, Game, GameOutcome, Round, RoundOutcome, Seat};
 
 use super::Mode;
 

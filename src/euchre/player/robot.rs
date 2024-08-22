@@ -3,8 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{ActionData, ActionType, Card, Player, PlayerState, Suit};
-use crate::game::euchre::{Rank, Team};
+use crate::euchre::{ActionData, ActionType, Card, Player, PlayerState, Rank, Suit, Team};
 
 const MIN_Z_SCORE: u8 = 8;
 const MIN_LONER_Z_SCORE: u8 = 11;
@@ -101,7 +100,7 @@ fn bid_other(state: PlayerState) -> ActionData {
         }
     }
     if best.0 >= MIN_Z_SCORE || state.seat == state.dealer {
-        ActionData::Call{
+        ActionData::Call {
             suit: best.1,
             alone: best.0 >= MIN_LONER_Z_SCORE,
         }

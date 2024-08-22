@@ -2,9 +2,10 @@
 
 use delegate::delegate;
 
-use crate::game::euchre::{Action, Card, Contract, Event, ExpectAction, RoundError};
-
-use super::{BaseRound, InitialState, Log, LogId, PlayerState, RawLog, Round, Seat, Tricks};
+use crate::euchre::{
+    Action, BaseRound, Card, Contract, Event, ExpectAction, Log, LogId, PlayerState, RawLog, Round,
+    RoundConfig, RoundError, Seat, Tricks,
+};
 
 #[derive(Debug)]
 pub struct LoggingRound {
@@ -12,11 +13,11 @@ pub struct LoggingRound {
     log: Log,
     cursor: Option<LogId>,
 }
-impl From<InitialState> for LoggingRound {
-    fn from(initial: InitialState) -> Self {
+impl From<RoundConfig> for LoggingRound {
+    fn from(config: RoundConfig) -> Self {
         Self {
-            log: Log::new(initial.clone()),
-            round: initial.into(),
+            log: Log::new(config.clone()),
+            round: config.into(),
             cursor: None,
         }
     }
@@ -62,16 +63,12 @@ impl LoggingRound {
     }
 
     pub fn random() -> Self {
-        rand::random::<InitialState>().into()
-    }
-
-    pub fn random_with_dealer(dealer: Seat) -> Self {
-        InitialState::random_with_dealer(dealer).into()
+        rand::random::<RoundConfig>().into()
     }
 
     pub fn restart(&mut self) {
         self.cursor = None;
-        self.round = BaseRound::from(self.log.initial().clone());
+        self.round = BaseRound::from(self.log.config().clone());
     }
 
     pub fn seek(&mut self, id: Option<LogId>) -> Result<(), RoundError> {
@@ -83,11 +80,5 @@ impl LoggingRound {
             }
         }
         Ok(())
-    }
-
-    pub fn backtrace(&self) -> Vec<(LogId, Action)> {
-        self.cursor
-            .map(|id| self.log.backtrace(id).expect("cursor valid"))
-            .unwrap_or_default()
     }
 }

@@ -1,8 +1,6 @@
 use ratatui::widgets::{Block, Row, Table, Widget};
 
-use crate::game::euchre::{Game, Team};
-
-use super::Round;
+use crate::euchre::{Game, Round, Team};
 
 pub struct Scoreboard {
     ns_score: u8,

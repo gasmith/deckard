@@ -3,7 +3,7 @@
 use ratatui::widgets::{ListItem, ListState};
 use ratatui::{prelude::*, widgets::List};
 
-use crate::game::euchre::{ActionData, Suit};
+use crate::euchre::{ActionData, Suit};
 
 pub type ActionChoiceState = ListState;
 
