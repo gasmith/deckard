@@ -198,7 +198,7 @@ fn lead_trick(state: PlayerState) -> ActionData {
 
 fn follow_trick(state: PlayerState) -> ActionData {
     // Filter down to what cards I _can_ play.
-    let trick = state.current_trick().expect("trick must be started");
+    let trick = state.tricks.last().expect("trick must be started");
     let cards = trick.filter(state.hand);
     if cards.len() == 1 {
         // The easiest choice is no choice at all.

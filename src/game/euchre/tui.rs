@@ -1,24 +1,30 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, stdout, Stdout};
-use std::iter::FromIterator;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyCode;
 use ratatui::crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::crossterm::{event, ExecutableCommand};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Paragraph, Row, Table};
+use ratatui::widgets::Paragraph;
 
+mod action;
 mod arena;
+mod hand;
 mod history;
+mod info;
+mod scoreboard;
+use self::action::{ActionChoice, ActionChoiceState};
 use self::arena::Arena;
-use self::history::{History, HistoryItem};
+use self::hand::{Hand, HandState};
+use self::history::{History, HistoryState};
+use self::info::Info;
+use self::scoreboard::Scoreboard;
 
 use super::{
-    Action, ActionData, ActionType, Event, ExpectAction, LogId, LoggingRound, Outcome, Player,
-    PlayerState, RawLog, Robot, Seat, Suit, Team, Trick,
+    Action, ActionData, ActionType, Event, ExpectAction, Game, LogId, LoggingRound, Player, RawLog,
+    Robot, Round, Seat,
 };
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -37,66 +43,34 @@ pub fn tui_restore() -> io::Result<()> {
     Ok(())
 }
 
-enum Wait {
-    Deal,
-    Action(ExpectAction),
-    Trick(Trick),
-    Round(Outcome),
-}
-
-struct Game {
-    round: LoggingRound,
-    robot: Robot,
-    score: HashMap<Team, u8>,
-}
-impl Game {
-    fn new() -> Self {
-        Self {
-            round: LoggingRound::random(),
-            robot: Robot::default(),
-            score: [(Team::NorthSouth, 0), (Team::EastWest, 0)]
-                .iter()
-                .copied()
-                .collect(),
-        }
-    }
-
-    fn robot_play(&mut self, expect: ExpectAction) {
-        let state = self.round.player_state(expect.seat);
-        let data = self.robot.take_action(state, expect.action);
-        let action = expect.with_data(data);
-        self.round
-            .apply(action)
-            .expect("robots don't make mistakes");
-    }
-
-    fn next_round(&mut self) {
-        let outcome = self.round.outcome().expect("round must be over");
-        let score = self.score.entry(outcome.team).or_default();
-        *score += outcome.points;
-        self.round = self.round.next_round();
-    }
-}
-
 struct Areas {
     arena: Rect,
     score: Rect,
     info: Rect,
-    prompt: Rect,
+    hand: Rect,
+    action: Rect,
+    message: Rect,
     history: Rect,
 }
 impl Areas {
-    fn new(frame: &Frame) -> Self {
+    fn new(frame: &Frame, mode: &Mode) -> Self {
         let [game, history] = Layout::new(
             Direction::Horizontal,
             [Constraint::Length(40), Constraint::Min(20)],
         )
         .areas(frame.area());
-        let [arena_score_info, prompt] = Layout::new(
+        let action_size = if let Mode::ActionChoice(choice, _) = mode {
+            choice.len() as u16
+        } else {
+            0
+        };
+        let [arena_score_info, hand, action, message] = Layout::new(
             Direction::Vertical,
             [
-                Constraint::Length(9), // arena & score & info
-                Constraint::Min(4),    // hand, prompt, debug
+                Constraint::Length(9),           // arena & score & info
+                Constraint::Length(1),           // hand
+                Constraint::Length(action_size), // optional action
+                Constraint::Min(2),              // optional messages
             ],
         )
         .areas(game);
@@ -120,54 +94,43 @@ impl Areas {
             arena,
             score,
             info,
-            prompt,
+            hand,
+            action,
+            message,
             history,
         }
     }
 }
 
-#[derive(Debug, Clone)]
-struct Prompt {
-    choices: Vec<ActionData>,
-    index: usize,
+#[derive(Debug)]
+enum Mode {
+    Event(Event),
+    Hand(Hand, HandState),
+    ActionChoice(ActionChoice, ActionChoiceState),
+    History(History, HistoryState),
 }
-impl Prompt {
-    fn new(choices: Vec<ActionData>) -> Self {
-        assert!(!choices.is_empty());
-        Self { choices, index: 0 }
-    }
 
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = ActionData>,
-    {
-        Self::new(iter.into_iter().collect())
+impl Mode {
+    fn event(event: Event) -> Self {
+        Self::Event(event)
     }
-
-    fn next(&mut self) {
-        if self.index < self.choices.len() - 1 {
-            self.index += 1;
-        }
+    fn hand(hand: Hand) -> Self {
+        Self::Hand(hand, HandState::default().with_selected(Some(0)))
     }
-
-    fn prev(&mut self) {
-        if self.index > 0 {
-            self.index -= 1;
-        }
+    fn action_choice(choice: ActionChoice) -> Self {
+        Self::ActionChoice(choice, ActionChoiceState::default().with_selected(Some(0)))
     }
-
-    fn action_data(&self) -> ActionData {
-        self.choices[self.index]
-    }
-
-    fn action(&self, expect: &ExpectAction) -> Action {
-        expect.with_data(self.action_data())
+    fn history(history: History) -> Self {
+        Self::History(history, HistoryState::default().with_selected(Some(0)))
     }
 }
+
+const HUMAN_SEAT: Seat = Seat::South;
 
 pub struct Tui {
-    game: Game,
-    prompt: Option<Prompt>,
+    mode: Mode,
+    game: Game<LoggingRound>,
+    robot: Robot,
     error: Option<String>,
     debug: Option<String>,
     exit: bool,
@@ -175,9 +138,12 @@ pub struct Tui {
 
 impl Default for Tui {
     fn default() -> Self {
+        let mut game: Game<LoggingRound> = Game::default();
+        let event = game.round_mut().pop_event().expect("deal");
         Self {
-            game: Game::new(),
-            prompt: None,
+            mode: Mode::Event(event),
+            game,
+            robot: Robot::default(),
             error: None,
             debug: None,
             exit: false,
@@ -188,231 +154,186 @@ impl Default for Tui {
 impl Tui {
     pub fn run(mut self, mut terminal: Term) -> anyhow::Result<()> {
         while !self.exit {
-            if let Some(wait) = self.advance() {
-                terminal.draw(|frame| self.render_frame(frame, &wait))?;
-                self.handle_events(&wait)?;
-            } else {
-                break;
-            }
+            terminal.draw(|frame| self.render_frame(frame))?;
+            self.handle_events()?;
         }
         Ok(())
     }
 
-    /// Advances the state of the game until an event occurs, or the game is
-    /// blocked waiting on a non-robot player's action. At the end of a round,
-    /// this function will always return immediately with [`Wait::Round`]).
-    fn advance(&mut self) -> Option<Wait> {
-        loop {
-            while let Some(e) = self.game.round.pop_event() {
-                match e {
-                    Event::Deal(_, _) => return Some(Wait::Deal),
-                    Event::Trick(t) => return Some(Wait::Trick(t)),
-                    Event::Round(o) => return Some(Wait::Round(o)),
-                    _ => (),
-                }
-            }
-            if let Some(expect) = self.game.round.next() {
-                if expect.seat == Seat::South {
-                    if self.prompt.is_none() {
-                        self.prompt = Some(match expect.action {
-                            ActionType::BidTop => Prompt::new(vec![
-                                ActionData::Pass,
-                                ActionData::BidTop { alone: false },
-                                ActionData::BidTop { alone: true },
-                            ]),
-                            ActionType::BidOther => {
-                                let top_suit = self.game.round.player_state(expect.seat).top.suit;
-                                let mut choices = vec![ActionData::Pass];
-                                for alone in [false, true] {
-                                    for &suit in Suit::all_suits() {
-                                        if suit != top_suit {
-                                            choices.push(ActionData::BidOther { suit, alone })
-                                        }
-                                    }
-                                }
-                                Prompt::new(choices)
-                            }
-                            ActionType::DealerDiscard | ActionType::Lead | ActionType::Follow => {
-                                Prompt::from_iter(
-                                    self.game
-                                        .round
-                                        .player_state(expect.seat)
-                                        .sorted_hand()
-                                        .into_iter()
-                                        .map(|card| ActionData::Card { card }),
-                                )
-                            }
-                        });
-                    }
-                    return Some(Wait::Action(expect));
-                } else {
-                    // Robots play automatically without user input.
-                    self.game.robot_play(expect);
-                    continue;
-                }
-            }
-            return self.game.round.outcome().map(Wait::Round);
-        }
-    }
-
-    fn render_frame(&mut self, frame: &mut Frame, wait: &Wait) {
-        let areas = Areas::new(frame);
-        let state = self.game.round.player_state(Seat::South);
-        frame.render_widget(Arena::new(wait, &state), areas.arena);
-        frame.render_widget(self.score_widget(&state), areas.score);
-        frame.render_widget(self.info_widget(wait, &state), areas.info);
-        frame.render_widget(self.prompt_widget(wait, &state), areas.prompt);
-        frame.render_widget(History::new(self.game.round.backtrace()), areas.history);
-    }
-
-    fn handle_events(&mut self, wait: &Wait) -> io::Result<()> {
-        // Debug output only persists for one refresh cycle.
-        self.debug = None;
-
-        match (event::read()?, wait) {
-            // Quit
-            (event::Event::Key(k), _) if k.code == KeyCode::Char('q') => {
-                self.exit = true;
-            }
-
-            // Save game log
-            // TODO: Prompt for filename
-            (event::Event::Key(k), _) if k.code == KeyCode::Char('s') => {
-                let file = File::create("euchre.json").expect("open euchre.json");
-                let log = RawLog::from(&self.game.round);
-                serde_json::to_writer(file, &log).expect("write to euchre.json");
-                self.debug = Some("Wrote to euchre.json".into());
-            }
-
-            // Handle input for next game action.
-            // TODO: Modal interface for selecting history, etc.
-            (event::Event::Key(k), Wait::Action(expect)) => {
-                self.handle_event_for_action(expect, k);
-            }
-
-            // At the end of the round, any key will advance.
-            (event::Event::Key(_), Wait::Round(_)) => {
-                self.game.next_round();
-            }
-            _ => (),
-        }
-        Ok(())
-    }
-
-    fn handle_event_for_action(&mut self, expect: &ExpectAction, key: KeyEvent) {
-        match (key.code, self.prompt.as_mut()) {
-            (KeyCode::Up | KeyCode::Left | KeyCode::Char('h' | 'k'), Some(prompt)) => {
-                prompt.prev();
-            }
-            (KeyCode::Down | KeyCode::Right | KeyCode::Char('j' | 'l'), Some(prompt)) => {
-                prompt.next();
-            }
-            (KeyCode::Enter | KeyCode::Char(' '), Some(prompt)) => {
-                let action = prompt.action(expect);
-                if let Err(err) = self.game.round.apply(action) {
-                    self.error = Some(err.to_string());
-                } else {
-                    self.error = None;
-                    self.prompt = None;
-                }
-            }
-            _ => (),
-        }
-    }
-
-    fn score_widget(&self, p_state: &PlayerState<'_>) -> Table<'static> {
-        fn get(map: &HashMap<Team, u8>, team: Team) -> String {
-            map.get(&team).copied().unwrap_or_default().to_string()
-        }
-        let ns_score = get(&self.game.score, Team::NorthSouth);
-        let ew_score = get(&self.game.score, Team::EastWest);
-        let tricks = p_state.trick_counts();
-        let ns_tricks = get(&tricks, Team::NorthSouth);
-        let ew_tricks = get(&tricks, Team::EastWest);
-        Table::default()
-            .header(Row::new(["", "N/S", "E/W"]))
-            .rows([
-                Row::new([String::from("Score"), ns_score, ew_score]),
-                Row::new([String::from("Trick"), ns_tricks, ew_tricks]),
-            ])
-            .block(Block::bordered())
-    }
-
-    fn info_widget(&self, wait: &Wait, p_state: &PlayerState<'_>) -> Paragraph<'static> {
-        let mut lines: Vec<Line> = Vec::with_capacity(2);
-        if let Some(c) = p_state.contract {
-            lines.push(Line::from_iter([
-                format!("{} called ", c.maker).into(),
-                c.suit.to_span(),
-                if c.alone { " alone." } else { "." }.into(),
-            ]))
+    fn render_frame(&mut self, frame: &mut Frame) {
+        let areas = Areas::new(frame, &self.mode);
+        let round = self.game.round();
+        frame.render_widget(Arena::new(&self.mode, round), areas.arena);
+        frame.render_widget(Scoreboard::new(&self.game), areas.score);
+        frame.render_widget(Info::new(&self.mode, &self.game), areas.info);
+        if let Mode::Hand(hand, state) = &mut self.mode {
+            frame.render_stateful_widget(hand.clone(), areas.hand, state);
         } else {
-            lines.push(format!("{} dealt.", p_state.dealer).into())
+            let seat = HUMAN_SEAT;
+            let hand = round.player_state(seat).sorted_hand();
+            frame.render_widget(Hand::new(seat, hand), areas.hand);
         }
-        match wait {
-            Wait::Deal => (),
-            Wait::Action(ExpectAction { seat, action }) => {
-                lines.push(format!("{seat} to {action}.").into())
-            }
-            Wait::Trick(t) => lines.push(format!("{} takes the trick.", t.best().0).into()),
-            Wait::Round(Outcome { team, points }) => {
-                lines.push(format!("{} win {points} points.", team.to_abbr()).into())
-            }
-        };
-        Paragraph::new(Text::from_iter(lines)).block(Block::bordered())
-    }
-
-    fn prompt_widget(&self, wait: &Wait, p_state: &PlayerState<'_>) -> Paragraph<'static> {
+        if let Mode::ActionChoice(choice, state) = &mut self.mode {
+            frame.render_stateful_widget(choice.clone(), areas.action, state);
+        }
+        if let Mode::History(history, state) = &mut self.mode {
+            frame.render_stateful_widget(history.clone(), areas.history, state);
+        }
         let mut lines = vec![];
-        let mut spans = vec![format!("{}'s hand: ", p_state.seat).into()];
-        for card in p_state.sorted_hand() {
-            let selected = self.prompt.as_ref().and_then(|p| match p.action_data() {
-                ActionData::Card { card } => Some(card),
-                _ => None,
-            });
-            let mut card_span = card.to_span();
-            if selected.is_some_and(|c| c == card) {
-                card_span = card_span.on_dark_gray();
-            }
-            spans.push(card_span);
-            spans.push(" ".into());
-        }
-        lines.push(Line::from(spans));
-        if let Wait::Action(ExpectAction {
-            action: ActionType::BidTop | ActionType::BidOther,
-            ..
-        }) = wait
-        {
-            let prompt = self.prompt.as_ref().unwrap();
-            lines.push("Choose one:".into());
-            for (index, choice) in prompt.choices.iter().enumerate() {
-                let spans: Vec<Span> = match choice {
-                    ActionData::Pass => vec!["Pass".into()],
-                    ActionData::BidTop { alone: false } => vec!["Pick it up".into()],
-                    ActionData::BidTop { alone: true } => vec!["Go alone".into()],
-                    ActionData::BidOther { suit, alone } => vec![
-                        "Call ".into(),
-                        suit.to_span(),
-                        if *alone { " alone" } else { "" }.into(),
-                    ],
-                    _ => unreachable!(),
-                };
-                let mut line = Line::from(" - ");
-                for mut span in spans {
-                    if index == prompt.index {
-                        span = span.on_dark_gray();
-                    }
-                    line.push_span(span);
-                }
-                lines.push(line)
-            }
-        }
         if let Some(error) = self.error.clone() {
             lines.push(Line::from(error).red().bold())
         }
         if let Some(debug) = self.debug.clone() {
             lines.push(Line::from(debug).blue().bold())
         }
-        Paragraph::new(lines)
+        frame.render_widget(Paragraph::new(lines), areas.message);
+    }
+
+    fn handle_events(&mut self) -> io::Result<()> {
+        let event::Event::Key(key) = event::read()? else {
+            return Ok(());
+        };
+
+        // Output messages only persist for one refresh cycle.
+        self.error = None;
+        self.debug = None;
+
+        match (&mut self.mode, key.code) {
+            // Quit!
+            (_, KeyCode::Char('q')) => self.exit = true,
+
+            // TODO: Make this less of a hack, prompt for filename, etc.
+            (_, KeyCode::Char('s')) => {
+                let file = File::create("euchre.json").expect("open euchre.json");
+                let log = RawLog::from(self.game.round());
+                serde_json::to_writer(file, &log).expect("write to euchre.json");
+                self.debug = Some("Wrote to euchre.json".into());
+            }
+
+            // Toggle history mode
+            (Mode::History(_, _), KeyCode::Char('!')) => self.game_step(),
+            (_, KeyCode::Char('!')) => self.enter_history_mode(),
+
+            // Events are informational, any key steps forward.
+            (Mode::Event(_), _) => self.game_step(),
+
+            // Hand management.
+            (Mode::Hand(hand, state), KeyCode::Enter | KeyCode::Char(' ')) => {
+                if let Some(action) = self
+                    .game
+                    .round()
+                    .next_action()
+                    .zip(hand.selected(state))
+                    .map(|(expect, card)| expect.with_data(ActionData::Card { card }))
+                {
+                    self.apply_action(action);
+                }
+            }
+            (Mode::Hand(_, s), KeyCode::Left | KeyCode::Char('h')) => s.select_previous(),
+            (Mode::Hand(_, s), KeyCode::Right | KeyCode::Char('l')) => s.select_next(),
+
+            // Action choices.
+            (Mode::ActionChoice(choice, state), KeyCode::Enter | KeyCode::Char(' ')) => {
+                if let Some(action) = self
+                    .game
+                    .round()
+                    .next_action()
+                    .zip(choice.selected(state))
+                    .map(|(expect, data)| expect.with_data(data))
+                {
+                    self.apply_action(action);
+                }
+            }
+            (Mode::ActionChoice(_, s), KeyCode::Up | KeyCode::Char('k')) => s.select_previous(),
+            (Mode::ActionChoice(_, s), KeyCode::Down | KeyCode::Char('j')) => s.select_next(),
+
+            // History browser.
+            (Mode::History(history, state), KeyCode::Enter | KeyCode::Char(' ')) => {
+                if let Some(id) = history.selected(state) {
+                    self.seek_round_history(id)
+                }
+            }
+            (Mode::History(_, s), KeyCode::Up | KeyCode::Char('k')) => s.select_previous(),
+            (Mode::History(_, s), KeyCode::Down | KeyCode::Char('j')) => s.select_next(),
+
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    /// Advances the state of the game until an event occurs, or the game is
+    /// blocked waiting on a non-robot player's action. Internally takes care
+    /// of advancing to the next round, if the game is not over.
+    fn game_step(&mut self) {
+        loop {
+            // Drain round events before checking for end-of-round.
+            if let Some(event) = self.game.round_mut().pop_event() {
+                self.mode = Mode::event(event);
+                break;
+            }
+
+            // Check for end of round & end of game.
+            if self.game.round().outcome().is_some() {
+                self.game.next_round();
+                if let Some(outcome) = self.game.outcome() {
+                    self.mode = Mode::event(Event::Game(outcome));
+                    break;
+                } else {
+                    continue;
+                }
+            }
+
+            // Handle round actions.
+            if let Some(expect @ ExpectAction { seat, action }) = self.game.round().next_action() {
+                if seat == HUMAN_SEAT {
+                    // Switch mode for human input.
+                    self.mode = match action {
+                        ActionType::BidTop => Mode::action_choice(ActionChoice::bid_top()),
+                        ActionType::BidOther => {
+                            let top_suit = self.game.round().top_card().suit;
+                            Mode::action_choice(ActionChoice::bid_other(top_suit))
+                        }
+                        ActionType::DealerDiscard | ActionType::Lead | ActionType::Follow => {
+                            let cards = self.game.round().player_state(seat).sorted_hand();
+                            Mode::hand(Hand::new(seat, cards))
+                        }
+                    };
+                    break;
+                } else {
+                    // Play as the robot.
+                    let round = self.game.round_mut();
+                    let state = round.player_state(seat);
+                    let data = self.robot.take_action(state, action);
+                    let action = expect.with_data(data);
+                    round.apply_action(action).expect("robots don't err");
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// Applies the specified action to the game and updates the mode.
+    fn apply_action(&mut self, action: Action) {
+        if let Err(err) = self.game.round_mut().apply_action(action) {
+            self.error = Some(err.to_string());
+        } else {
+            self.game_step();
+        }
+    }
+
+    /// Enters history browser mode.
+    fn enter_history_mode(&mut self) {
+        self.mode = Mode::history(History::new(self.game.round().backtrace()))
+    }
+
+    /// Seeks to a particular point in round history.
+    fn seek_round_history(&mut self, id: LogId) {
+        if let Err(e) = self.game.round_mut().seek(id) {
+            self.error = Some(e.to_string())
+        } else {
+            while self.game.round_mut().pop_event().is_some() {}
+            self.game_step()
+        }
     }
 }

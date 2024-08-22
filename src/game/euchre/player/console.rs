@@ -120,7 +120,7 @@ impl Console {
     }
 
     fn follow(&self, state: PlayerState) -> ActionData {
-        let trick = state.current_trick().unwrap();
+        let trick = state.tricks.last().unwrap();
         println!("Trick: {}", self.format_trick(trick));
         println!("Hand: {}", self.format_cards(state.hand));
         let card = prompt("Follow? ");
@@ -162,6 +162,9 @@ impl Player for Console {
             }
             Event::Round(outcome) => {
                 println!("{:}: {} points", outcome.team, outcome.points);
+            }
+            Event::Game(outcome) => {
+                println!("{:} wins!", outcome.team);
             }
         }
     }

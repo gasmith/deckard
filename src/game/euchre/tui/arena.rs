@@ -3,70 +3,65 @@
 use ratatui::widgets::{Block, Widget};
 use ratatui::{prelude::*, widgets::Paragraph};
 
-use crate::game::euchre::{ActionType, Card, ExpectAction, Seat, Trick};
+use crate::game::euchre::{ActionType, Card, Event, Round, Seat, Trick};
 
-use super::{PlayerState, Wait};
+use super::Mode;
 
-pub struct Arena<'a> {
-    wait: &'a Wait,
-    state: &'a PlayerState<'a>,
+pub struct Arena {
+    top: Option<Card>,
+    trick: Option<Trick>,
 }
 
-impl<'a> Arena<'a> {
-    pub fn new(wait: &'a Wait, state: &'a PlayerState<'a>) -> Self {
-        Self { wait, state }
+impl Arena {
+    pub fn new(mode: &Mode, round: &impl Round) -> Self {
+        let action = round.next_action().map(|expect| expect.action);
+        let top = match (mode, action) {
+            (Mode::Event(Event::Deal(_, _)), _) | (_, Some(ActionType::BidTop)) => {
+                Some(round.top_card())
+            }
+            _ => None,
+        };
+        let trick = match (mode, action) {
+            (Mode::Event(Event::Trick(trick)), _) => Some(trick.clone()),
+            (_, Some(ActionType::Follow)) => round.tricks().last().cloned(),
+            _ => None,
+        };
+        Self { top, trick }
     }
 
-    fn top_card_span(&self, top: Option<Card>) -> Span<'_> {
-        top.map(|c| c.to_span()).unwrap_or(Span::raw("  "))
+    fn top_card_span(&self) -> Span<'_> {
+        self.top.map(|c| c.to_span()).unwrap_or(Span::raw("  "))
     }
 
-    fn trick_card_span(&self, trick: Option<&Trick>, seat: Seat) -> Span<'_> {
-        trick
+    fn trick_card_span(&self, seat: Seat) -> Span<'_> {
+        self.trick
+            .as_ref()
             .and_then(|t| t.get_card(seat))
             .map(|c| c.to_span())
             .unwrap_or(Span::raw("  "))
     }
 
     fn to_lines(&self) -> Vec<Line<'_>> {
-        let top = match self.wait {
-            Wait::Deal
-            | Wait::Action(ExpectAction {
-                action: ActionType::BidTop | ActionType::DealerDiscard,
-                ..
-            }) => Some(self.state.top),
-            _ => None,
-        };
-        let trick = match &self.wait {
-            Wait::Action(ExpectAction {
-                action: ActionType::Follow,
-                ..
-            }) => self.state.current_trick(),
-            Wait::Trick(trick) => Some(trick),
-            _ => None,
-        };
         vec![
             Span::raw("N").into_centered_line(),
             Line::default(),
-            self.trick_card_span(trick, Seat::North)
-                .into_centered_line(),
+            self.trick_card_span(Seat::North).into_centered_line(),
             Line::from(vec![
                 Span::raw("W  "),
-                self.trick_card_span(trick, Seat::West),
-                self.top_card_span(top),
-                self.trick_card_span(trick, Seat::East),
+                self.trick_card_span(Seat::West),
+                self.top_card_span(),
+                self.trick_card_span(Seat::East),
                 Span::raw("  E"),
             ])
             .centered(),
-            self.trick_card_span(trick, Seat::South)
-                .into_centered_line(),
+            self.trick_card_span(Seat::South).into_centered_line(),
             Line::default(),
             Span::raw("S").into_centered_line(),
         ]
     }
 }
 
-impl<'a> Widget for Arena<'a> {
+impl Widget for Arena {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,

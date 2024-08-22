@@ -8,6 +8,7 @@ use super::{Action, ActionData, ActionType, LogId};
 
 pub type HistoryState = ListState;
 
+#[derive(Debug, Clone)]
 pub struct History {
     items: Vec<HistoryItem>,
 }
@@ -40,6 +41,7 @@ impl History {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct HistoryItem {
     id: LogId,
     action: Action,
