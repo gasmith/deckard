@@ -145,7 +145,7 @@ impl BaseRound {
                 .expect("hands populated")
                 .push(self.top);
             self.next_action = Some(ExpectAction::new(self.dealer, ActionType::DealerDiscard));
-            self.events.push_back(Event::Bid(contract));
+            self.events.push_back(Event::Call(contract));
             Ok(())
         }
     }
@@ -166,7 +166,7 @@ impl BaseRound {
             let contract = Contract { maker, suit, alone };
             self.contract = Some(contract);
             self.first_trick();
-            self.events.push_back(Event::Bid(contract));
+            self.events.push_back(Event::Call(contract));
             Ok(())
         }
     }

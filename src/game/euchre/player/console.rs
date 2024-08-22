@@ -1,4 +1,4 @@
-//! Console interactive player.
+//! Simple console interactive player.
 
 use std::{fmt::Display, io::Write, str::FromStr, sync::Arc};
 
@@ -148,9 +148,9 @@ impl Player for Console {
                 println!("Dealer: {dealer}");
                 println!("Top card: {}", self.format_card(*top));
             }
-            Event::Bid(contract) => {
+            Event::Call(contract) => {
                 println!(
-                    "{:?}: Bid {}{}",
+                    "{:?}: Called {}{}",
                     contract.maker,
                     self.format_suit(contract.suit),
                     if contract.alone { " alone" } else { "" }

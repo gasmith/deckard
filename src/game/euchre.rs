@@ -27,7 +27,7 @@ pub use tui::{tui_init, tui_restore, Tui};
 #[derive(Debug, Clone)]
 pub enum Event {
     Deal(Seat, Card),
-    Bid(Contract),
+    Call(Contract),
     Trick(Trick),
     Round(RoundOutcome),
     Game(GameOutcome),
