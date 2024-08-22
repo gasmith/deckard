@@ -3,13 +3,12 @@ use clap::Parser;
 mod args;
 mod euchre;
 mod french;
-use self::args::{Args, Ui};
-use self::euchre::{cli_main, tui_main};
+use self::args::{Args, Game, Ui};
 
 fn main() {
     let args = Args::parse();
-    match args.ui.unwrap_or_default() {
-        Ui::Console => cli_main(),
-        Ui::Tui => tui_main(),
+    match (args.game.unwrap_or_default(), args.ui.unwrap_or_default()) {
+        (Game::Euchre, Ui::Cli) => euchre::cli_main(),
+        (Game::Euchre, Ui::Tui) => euchre::tui_main(),
     }
 }

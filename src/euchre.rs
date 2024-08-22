@@ -43,7 +43,6 @@ pub struct Contract {
     pub alone: bool,
 }
 
-#[allow(dead_code)]
 pub fn cli_main() {
     let console = Console::default().into_player();
     let robot = Robot::default().into_player();
