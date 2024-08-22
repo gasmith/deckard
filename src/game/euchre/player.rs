@@ -5,11 +5,6 @@ mod robot;
 pub use console::Console;
 pub use robot::Robot;
 
-#[cfg(test)]
-mod scripted;
-#[cfg(test)]
-pub use scripted::ScriptedPlayer;
-
 /// A trait that implements a euchre player.
 pub trait Player {
     /// Take the specified action.
