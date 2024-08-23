@@ -1,9 +1,4 @@
 //! The game of euchre.
-//!
-//! Todo:
-//!
-//!  - Feature flag for no-trump
-//!  - Feature flag for stick-the-dealer
 
 mod action;
 mod card;
@@ -14,33 +9,26 @@ mod round;
 mod seat;
 mod trick;
 mod tui;
-pub use self::action::{Action, ActionData, ActionType, ExpectAction};
-pub use self::card::{Card, Deck, Rank, Suit};
-pub use self::error::{PlayerError, RoundError};
-pub use self::game::{Game, GameOutcome};
-pub use self::player::{Console, Player, Robot};
-pub use self::round::{
-    BaseRound, Log, LogId, LoggingRound, PlayerState, RawLog, Round, RoundConfig, RoundOutcome,
-    Tricks,
+use self::action::{Action, ActionData, ActionType, ExpectAction};
+use self::card::{Card, Deck, Rank, Suit};
+use self::error::{PlayerError, RoundError};
+use self::game::{Game, GameOutcome};
+use self::player::{Console, Player, Robot};
+use self::round::{
+    BaseRound, Contract, Log, LogId, LoggingRound, PlayerState, RawLog, Round, RoundConfig,
+    RoundOutcome, Tricks,
 };
-pub use self::seat::{Seat, Team};
-pub use self::trick::Trick;
-pub use self::tui::{tui_init, tui_restore, Tui};
+use self::seat::{Seat, Team};
+use self::trick::Trick;
+use self::tui::{tui_init, tui_restore, Tui};
 
 #[derive(Debug, Clone)]
-pub enum Event {
+enum Event {
     Deal(Seat, Card),
     Call(Contract),
     Trick(Trick),
     Round(RoundOutcome),
     Game(GameOutcome),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Contract {
-    pub maker: Seat,
-    pub suit: Suit,
-    pub alone: bool,
 }
 
 pub fn cli_main() {

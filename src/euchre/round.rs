@@ -8,8 +8,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Action, ActionData, ActionType, Card, Contract, Deck, Event, ExpectAction, PlayerError,
-    RoundError, Seat, Suit, Team, Trick,
+    Action, ActionData, ActionType, Card, Deck, Event, ExpectAction, PlayerError, RoundError, Seat,
+    Suit, Team, Trick,
 };
 
 mod base;
@@ -126,6 +126,14 @@ impl RoundConfig {
             Err(RoundError::DuplicateCard)
         }
     }
+}
+
+/// The contract established by whomever calls suit.
+#[derive(Debug, Clone, Copy)]
+pub struct Contract {
+    pub maker: Seat,
+    pub suit: Suit,
+    pub alone: bool,
 }
 
 /// The outcome of a round.
