@@ -7,6 +7,7 @@ use super::{Round, RoundConfig, Team};
 #[derive(Debug, Clone)]
 pub struct GameOutcome {
     pub team: Team,
+    #[allow(dead_code)]
     pub score: HashMap<Team, u8>,
 }
 

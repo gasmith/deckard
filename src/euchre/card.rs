@@ -117,7 +117,7 @@ impl Card {
         Self { rank, suit }
     }
 
-    pub fn to_ansi_string(&self) -> ANSIString<'static> {
+    pub fn to_ansi_string(self) -> ANSIString<'static> {
         use ansi_term::Colour::Red;
         match self.suit {
             Suit::Club | Suit::Spade => self.to_string().into(),
@@ -125,7 +125,7 @@ impl Card {
         }
     }
 
-    pub fn to_span(&self) -> Span<'static> {
+    pub fn to_span(self) -> Span<'static> {
         use ratatui::style::Color;
         match self.suit {
             Suit::Club | Suit::Spade => Span::raw(self.to_string()),

@@ -49,9 +49,7 @@ pub trait Round {
 
     /// The outcome of the round, if it is over.
     fn outcome(&self) -> Option<RoundOutcome> {
-        let Some(contract) = self.contract() else {
-            return None;
-        };
+        let contract = self.contract()?;
         let makers = Team::from(contract.maker);
         let defenders = makers.other();
 
@@ -105,7 +103,7 @@ impl RoundConfig {
     }
 
     pub fn random() -> Self {
-        rand::random::<RoundConfig>().into()
+        rand::random()
     }
 
     pub fn random_with_dealer(dealer: Seat) -> Self {
