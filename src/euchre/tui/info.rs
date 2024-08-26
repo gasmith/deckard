@@ -19,13 +19,13 @@ enum First {
 impl First {
     fn into_line(self) -> Line<'static> {
         match self {
-            Self::Dealer(dealer) => format!("{} dealt.", dealer).into(),
+            Self::Dealer(dealer) => format!("{dealer}.").into(),
             Self::Contract(contract) => Line::from_iter([
                 format!("{} called ", contract.maker).into(),
                 contract.suit.to_span(),
                 if contract.alone { " alone." } else { "." }.into(),
             ]),
-            _ => Line::default(),
+            Self::Empty => Line::default(),
         }
     }
 }
@@ -82,6 +82,6 @@ impl Widget for Info {
     {
         Paragraph::new(Text::from_iter([self.0.into_line(), self.1.into_line()]))
             .block(Block::bordered())
-            .render(area, buf)
+            .render(area, buf);
     }
 }

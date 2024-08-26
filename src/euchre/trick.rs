@@ -59,7 +59,7 @@ impl Trick {
     }
 
     /// Validate that the player is following the lead suit where possible.
-    pub fn is_following_lead(&self, hand: &[Card], card: &Card) -> bool {
+    pub fn is_following_lead(&self, hand: &[Card], card: Card) -> bool {
         let lead_card = self.lead().1;
         card.is_following(self.trump, lead_card)
             || !hand.iter().any(|c| c.is_following(self.trump, lead_card))

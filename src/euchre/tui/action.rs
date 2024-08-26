@@ -3,7 +3,7 @@
 use ratatui::widgets::{ListItem, ListState};
 use ratatui::{prelude::*, widgets::List};
 
-use crate::euchre::{ActionData, Suit};
+use crate::euchre::{Action, ActionData, ExpectAction, Suit};
 
 pub type ActionChoiceState = ListState;
 
@@ -30,7 +30,7 @@ impl ActionChoice {
         for alone in [false, true] {
             for &suit in Suit::all_suits() {
                 if suit != top_suit {
-                    choices.push(ActionData::Call { suit, alone })
+                    choices.push(ActionData::Call { suit, alone });
                 }
             }
         }
@@ -46,6 +46,16 @@ impl ActionChoice {
             .selected()
             .and_then(|idx| self.choices.get(idx))
             .copied()
+    }
+
+    pub fn action(
+        &self,
+        state: &ActionChoiceState,
+        expect: Option<ExpectAction>,
+    ) -> Option<Action> {
+        expect
+            .zip(self.selected(state))
+            .map(|(expect, data)| expect.with_data(data))
     }
 
     fn list(self) -> List<'static> {
@@ -65,7 +75,7 @@ impl From<ActionData> for ListItem<'static> {
                 if alone { " alone" } else { "" }.into(),
             ],
             // Cards are selected with the [`Hand`] widget.
-            _ => unreachable!(),
+            ActionData::Card { .. } => unreachable!(),
         };
         ListItem::new(Line::from(spans))
     }
@@ -76,7 +86,7 @@ impl Widget for ActionChoice {
     where
         Self: Sized,
     {
-        Widget::render(self.list(), area, buf)
+        Widget::render(self.list(), area, buf);
     }
 }
 
@@ -84,6 +94,6 @@ impl StatefulWidget for ActionChoice {
     type State = ActionChoiceState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        StatefulWidget::render(self.list(), area, buf, state)
+        StatefulWidget::render(self.list(), area, buf, state);
     }
 }

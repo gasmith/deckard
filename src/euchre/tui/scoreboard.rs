@@ -45,6 +45,6 @@ impl Widget for Scoreboard {
                 ]),
             ])
             .block(Block::bordered())
-            .render(area, buf)
+            .render(area, buf);
     }
 }

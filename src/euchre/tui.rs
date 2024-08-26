@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, stdout, Stdout};
 
@@ -23,8 +24,8 @@ use self::info::Info;
 use self::scoreboard::Scoreboard;
 
 use super::{
-    Action, ActionData, ActionType, Event, ExpectAction, Game, LogId, LoggingRound, Player, RawLog,
-    Robot, Round, Seat,
+    Action, ActionType, Event, ExpectAction, Game, LogId, LoggingRound, Player, RawLog, Robot,
+    Round, Seat,
 };
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -60,7 +61,7 @@ impl Areas {
         )
         .areas(frame.area());
         let action_size = if let Mode::ActionChoice(choice, _) = mode {
-            choice.len() as u16
+            u16::try_from(choice.len()).expect("less than 2^16")
         } else {
             0
         };
@@ -160,6 +161,7 @@ impl Tui {
         Ok(())
     }
 
+    // Top-level frame renderer.
     fn render_frame(&mut self, frame: &mut Frame) {
         let areas = Areas::new(frame, &self.mode);
         let round = self.game.round();
@@ -181,14 +183,15 @@ impl Tui {
         }
         let mut lines = vec![];
         if let Some(error) = self.error.clone() {
-            lines.push(Line::from(error).red().bold())
+            lines.push(Line::from(error).red().bold());
         }
         if let Some(debug) = self.debug.clone() {
-            lines.push(Line::from(debug).blue().bold())
+            lines.push(Line::from(debug).blue().bold());
         }
         frame.render_widget(Paragraph::new(lines), areas.message);
     }
 
+    /// Top-level event handler.
     fn handle_events(&mut self) -> io::Result<()> {
         let event::Event::Key(key) = event::read()? else {
             return Ok(());
@@ -198,58 +201,41 @@ impl Tui {
         self.error = None;
         self.debug = None;
 
+        #[allow(clippy::match_same_arms)]
         match (&mut self.mode, key.code) {
-            // Quit!
             (_, KeyCode::Char('q')) => self.exit = true,
-
-            // TODO: Make this less of a hack, prompt for filename, etc.
-            (_, KeyCode::Char('s')) => {
-                let file = File::create("euchre.json").expect("open euchre.json");
-                let log = RawLog::from(self.game.round());
-                serde_json::to_writer(file, &log).expect("write to euchre.json");
-                self.debug = Some("Wrote to euchre.json".into());
-            }
+            (_, KeyCode::Char('s')) => self.save_round(),
 
             // Toggle history mode
             (Mode::History(_, _), KeyCode::Char('!')) => self.game_step(),
             (_, KeyCode::Char('!')) => self.enter_history_mode(),
 
-            // Events are informational, any key steps forward.
+            // Event acknowledgement
             (Mode::Event(Event::Game(_)), _) => (),
             (Mode::Event(Event::Round(_)), _) => self.next_round(),
             (Mode::Event(_), _) => self.game_step(),
 
-            // Hand management.
+            // Hand management
             (Mode::Hand(hand, state), KeyCode::Enter | KeyCode::Char(' ')) => {
-                if let Some(action) = self
-                    .game
-                    .round()
-                    .next_action()
-                    .zip(hand.selected(state))
-                    .map(|(expect, card)| expect.with_data(ActionData::Card { card }))
-                {
+                let expect = self.game.round().next_action();
+                if let Some(action) = hand.action(state, expect) {
                     self.apply_action(action);
                 }
             }
             (Mode::Hand(_, s), KeyCode::Left | KeyCode::Char('h')) => s.select_previous(),
             (Mode::Hand(_, s), KeyCode::Right | KeyCode::Char('l')) => s.select_next(),
 
-            // Action choices.
+            // Action choices
             (Mode::ActionChoice(choice, state), KeyCode::Enter | KeyCode::Char(' ')) => {
-                if let Some(action) = self
-                    .game
-                    .round()
-                    .next_action()
-                    .zip(choice.selected(state))
-                    .map(|(expect, data)| expect.with_data(data))
-                {
+                let expect = self.game.round().next_action();
+                if let Some(action) = choice.action(state, expect) {
                     self.apply_action(action);
                 }
             }
             (Mode::ActionChoice(_, s), KeyCode::Up | KeyCode::Char('k')) => s.select_previous(),
             (Mode::ActionChoice(_, s), KeyCode::Down | KeyCode::Char('j')) => s.select_next(),
 
-            // History browser.
+            // History browser
             (Mode::History(history, state), KeyCode::Enter | KeyCode::Char(' ')) => {
                 if let Some(id) = history.selected(state) {
                     self.seek_round_history(id);
@@ -303,33 +289,12 @@ impl Tui {
             }
 
             // Handle round actions.
-            if let Some(expect @ ExpectAction { seat, action }) = self.game.round().next_action() {
-                if seat == HUMAN_SEAT {
-                    // Switch mode for human input.
-                    self.mode = match action {
-                        ActionType::BidTop => {
-                            let top_suit = self.game.round().top_card().suit;
-                            Mode::action_choice(ActionChoice::bid_top(top_suit))
-                        }
-                        ActionType::BidOther => {
-                            let top_suit = self.game.round().top_card().suit;
-                            Mode::action_choice(ActionChoice::bid_other(top_suit))
-                        }
-                        ActionType::DealerDiscard | ActionType::Lead | ActionType::Follow => {
-                            let cards = self.game.round().player_state(seat).sorted_hand();
-                            Mode::hand(Hand::new(seat, cards))
-                        }
-                    };
+            if let Some(expect) = self.game.round().next_action() {
+                if expect.seat == HUMAN_SEAT {
+                    self.await_user_action(expect);
                     break;
-                } else {
-                    // Play as the robot.
-                    let round = self.game.round_mut();
-                    let state = round.player_state(seat);
-                    let data = self.robot.take_action(state, action);
-                    let action = expect.with_data(data);
-                    round.apply_action(action).expect("robots don't err");
-                    continue;
                 }
+                self.play_as_robot(expect);
             }
         }
     }
@@ -343,20 +308,65 @@ impl Tui {
         }
     }
 
+    /// Updates the UI mode to await user input for an action.
+    fn await_user_action(&mut self, expect: ExpectAction) {
+        self.mode = match expect.action {
+            ActionType::BidTop => {
+                let top_suit = self.game.round().top_card().suit;
+                Mode::action_choice(ActionChoice::bid_top(top_suit))
+            }
+            ActionType::BidOther => {
+                let top_suit = self.game.round().top_card().suit;
+                Mode::action_choice(ActionChoice::bid_other(top_suit))
+            }
+            ActionType::DealerDiscard | ActionType::Lead | ActionType::Follow => {
+                let cards = self.game.round().player_state(expect.seat).sorted_hand();
+                Mode::hand(Hand::new(expect.seat, cards))
+            }
+        };
+    }
+
+    /// Uses the robot to resolve the next action.
+    fn play_as_robot(&mut self, expect: ExpectAction) {
+        let round = self.game.round_mut();
+        let state = round.player_state(expect.seat);
+        let data = self.robot.take_action(state, expect.action);
+        let action = expect.with_data(data);
+        round.apply_action(action).expect("robots don't err");
+    }
+
     /// Enters history browser mode.
     fn enter_history_mode(&mut self) {
         let round = self.game.round();
         let history = History::new(round.log());
         let index = history.position(round.cursor());
-        self.mode = Mode::history(history, index)
+        self.mode = Mode::history(history, index);
     }
 
     /// Seeks to a particular point in round history.
     fn seek_round_history(&mut self, id: Option<LogId>) {
         if let Err(e) = self.game.round_mut().seek(id) {
-            self.error = Some(e.to_string())
+            self.error = Some(e.to_string());
         } else {
             while self.game.round_mut().pop_event().is_some() {}
         }
+    }
+
+    /// Saves the round to a file.
+    fn save_round(&mut self) {
+        // TODO: Make this less of a hack... add an input for filename, etc.
+        if let Err(e) = self.try_save_round() {
+            self.error = Some(format!("Failed to write euchre.json: {e}"));
+        } else {
+            self.debug = Some("Wrote to euchre.json".into());
+        }
+    }
+
+    /// Tries to save the round to a file, or returns an error.
+    fn try_save_round(&self) -> Result<(), anyhow::Error> {
+        let file = File::create("euchre.json")?;
+        let log = RawLog::from(self.game.round());
+        serde_json::to_writer(file, &log)?;
+        Ok(())
     }
 }

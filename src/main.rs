@@ -1,3 +1,5 @@
+#![allow(clippy::module_name_repetitions, clippy::struct_field_names)]
+
 use clap::Parser;
 
 mod args;

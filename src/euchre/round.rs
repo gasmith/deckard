@@ -1,4 +1,4 @@
-//! BaseRound management
+//! Round management
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;

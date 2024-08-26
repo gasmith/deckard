@@ -48,7 +48,7 @@ impl History {
                 prefix.push(VERT);
             }
             prefix.push(' ');
-            items.push(HistoryItem::action(node.id, node.action, prefix))
+            items.push(HistoryItem::action(node.id, node.action, prefix));
         }
 
         Self { items }
@@ -58,11 +58,14 @@ impl History {
         self.items.iter().position(|item| item.id() == id)
     }
 
+    /// Returns the selected log entry in the history. Note that the log entry pertaining to the
+    /// initial deal is `None`, which will be returned as `Some(None)` when selected.
+    #[allow(clippy::option_option)]
     pub fn selected(&self, state: &HistoryState) -> Option<Option<LogId>> {
         state
             .selected()
             .and_then(|idx| self.items.get(idx))
-            .map(|item| item.id())
+            .map(HistoryItem::id)
     }
 
     fn get_item_bounds(&self, state: &HistoryState, height: usize) -> (usize, usize) {
@@ -84,7 +87,7 @@ pub enum HistoryItem {
     },
 }
 
-fn action_spans(action: &Action) -> Vec<Span<'static>> {
+fn action_spans(action: Action) -> Vec<Span<'static>> {
     let mut spans = vec![Span::from(action.seat.to_string())];
     match (action.action, action.data) {
         (_, ActionData::Pass) => spans.push(" passed".into()),
@@ -132,7 +135,7 @@ impl HistoryItem {
                 }
             }
             Self::Action { action, prefix, .. } => {
-                let mut spans = action_spans(&action);
+                let mut spans = action_spans(action);
                 if selected {
                     spans = spans.into_iter().map(Span::reversed).collect();
                 }
@@ -149,7 +152,7 @@ impl Widget for History {
         Self: Sized,
     {
         let mut state = HistoryState::default();
-        StatefulWidget::render(self, area, buf, &mut state)
+        StatefulWidget::render(self, area, buf, &mut state);
     }
 }
 

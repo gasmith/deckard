@@ -31,15 +31,14 @@ impl Arena {
     }
 
     fn top_card_span(&self) -> Span<'_> {
-        self.top.map(|c| c.to_span()).unwrap_or(Span::raw("  "))
+        self.top.map_or(Span::raw("  "), Card::to_span)
     }
 
     fn trick_card_span(&self, seat: Seat) -> Span<'_> {
         self.trick
             .as_ref()
             .and_then(|t| t.get_card(seat))
-            .map(|c| c.to_span())
-            .unwrap_or(Span::raw("  "))
+            .map_or(Span::raw("  "), Card::to_span)
     }
 
     fn to_lines(&self) -> Vec<Line<'_>> {
@@ -70,6 +69,6 @@ impl Widget for Arena {
         let lines = self.to_lines();
         Paragraph::new(lines)
             .block(Block::bordered())
-            .render(area, buf)
+            .render(area, buf);
     }
 }

@@ -3,7 +3,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 
-use crate::euchre::{Card, Seat};
+use crate::euchre::{Action, ActionData, Card, ExpectAction, Seat};
 
 pub type HandState = ListState;
 
@@ -28,6 +28,12 @@ impl Hand {
             .and_then(|idx| self.cards.get(idx).copied())
     }
 
+    pub fn action(&self, state: &HandState, expect: Option<ExpectAction>) -> Option<Action> {
+        expect
+            .zip(self.selected(state))
+            .map(|(expect, card)| expect.with_data(ActionData::Card { card }))
+    }
+
     fn line(self, selected: Option<Card>) -> Line<'static> {
         let mut spans = vec![format!("{}'s hand: ", self.seat).into()];
         for card in self.cards {
@@ -47,7 +53,7 @@ impl Widget for Hand {
     where
         Self: Sized,
     {
-        self.line(None).render(area, buf)
+        self.line(None).render(area, buf);
     }
 }
 
@@ -63,6 +69,6 @@ impl StatefulWidget for Hand {
             state.select(Some(0));
         }
         let selected = self.selected(state);
-        self.line(selected).render(area, buf)
+        self.line(selected).render(area, buf);
     }
 }

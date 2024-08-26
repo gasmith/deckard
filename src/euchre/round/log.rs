@@ -101,15 +101,15 @@ impl Log {
         &self.config
     }
 
-    pub fn find_child(&self, parent: Option<Id>, action: &Action) -> Option<Id> {
+    pub fn find_child(&self, parent: Option<Id>, action: Action) -> Option<Id> {
         self.children
             .get(&parent)
-            .and_then(|ids| ids.iter().find(|id| &self.actions[id].action == action))
+            .and_then(|ids| ids.iter().find(|id| self.actions[id].action == action))
             .copied()
     }
 
     pub fn insert(&mut self, parent: Option<Id>, action: Action) -> Id {
-        let id = self.find_child(parent, &action).unwrap_or_else(|| {
+        let id = self.find_child(parent, action).unwrap_or_else(|| {
             let id = self.next_id;
             self.next_id += 1;
             let node = ActionNode::new(id, parent, action);

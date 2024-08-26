@@ -1,5 +1,7 @@
 //! Trick management.
 
+use std::convert::TryFrom;
+
 use delegate::delegate;
 
 use super::{Team, Trick};
@@ -35,9 +37,11 @@ impl Tricks {
     }
 
     pub fn win_count(&self, team: Team) -> u8 {
-        self.tricks
+        let count = self
+            .tricks
             .iter()
             .filter(|t| t.len() == self.trick_size && Team::from(t.best().0) == team)
-            .count() as u8
+            .count();
+        u8::try_from(count).expect("less than 256")
     }
 }

@@ -21,7 +21,7 @@ fn prompt<T: FromStr, S: Display>(prompt: S) -> T {
     let mut stdout = std::io::stdout();
     loop {
         let mut buffer = String::new();
-        print!("{}", prompt);
+        print!("{prompt}");
         stdout.flush().expect("flush");
         stdin.read_line(&mut buffer).expect("read");
         let trimmed = buffer.trim();
@@ -87,7 +87,7 @@ impl Console {
         self.format(&ANSIStrings(&parts))
     }
 
-    fn bid_top(&self, state: PlayerState) -> ActionData {
+    fn bid_top(&self, state: &PlayerState) -> ActionData {
         println!("Hand: {}", self.format_cards(state.hand));
         if prompt::<bool, _>("Bid top? ") {
             let alone = prompt::<bool, _>("Alone? ");
@@ -100,7 +100,8 @@ impl Console {
         }
     }
 
-    fn bid_other(&self, _: PlayerState) -> ActionData {
+    #[allow(clippy::unused_self)]
+    fn bid_other(&self, _: &PlayerState) -> ActionData {
         if prompt::<bool, _>("Bid other? ") {
             let suit = prompt::<Suit, _>("Suit? ");
             let alone = prompt::<bool, _>("Alone? ");
@@ -110,19 +111,19 @@ impl Console {
         }
     }
 
-    fn dealer_discard(&self, state: PlayerState) -> ActionData {
+    fn dealer_discard(&self, state: &PlayerState) -> ActionData {
         println!("Hand: {}", self.format_cards(state.hand));
         let card = prompt("Discard? ");
         ActionData::Card { card }
     }
 
-    fn lead(&self, state: PlayerState) -> ActionData {
+    fn lead(&self, state: &PlayerState) -> ActionData {
         println!("Hand: {}", self.format_cards(state.hand));
         let card = prompt("Lead? ");
         ActionData::Card { card }
     }
 
-    fn follow(&self, state: PlayerState) -> ActionData {
+    fn follow(&self, state: &PlayerState) -> ActionData {
         let trick = state.tricks.last().unwrap();
         println!("Trick: {}", self.format_trick(trick));
         println!("Hand: {}", self.format_cards(state.hand));
@@ -134,11 +135,11 @@ impl Console {
 impl Player for Console {
     fn take_action(&self, state: PlayerState, action: ActionType) -> ActionData {
         match action {
-            ActionType::BidTop => self.bid_top(state),
-            ActionType::BidOther => self.bid_other(state),
-            ActionType::DealerDiscard => self.dealer_discard(state),
-            ActionType::Lead => self.lead(state),
-            ActionType::Follow => self.follow(state),
+            ActionType::BidTop => self.bid_top(&state),
+            ActionType::BidOther => self.bid_other(&state),
+            ActionType::DealerDiscard => self.dealer_discard(&state),
+            ActionType::Lead => self.lead(&state),
+            ActionType::Follow => self.follow(&state),
         }
     }
 

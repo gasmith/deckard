@@ -176,14 +176,14 @@ fn test_log_find_child() {
         Some(0),
         log.find_child(
             None,
-            &Action::new(Seat::East, ActionType::BidTop, ActionData::Pass)
+            Action::new(Seat::East, ActionType::BidTop, ActionData::Pass)
         )
     );
     assert_eq!(
         Some(14),
         log.find_child(
             None,
-            &Action::new(
+            Action::new(
                 Seat::East,
                 ActionType::BidTop,
                 ActionData::Call {
@@ -197,7 +197,7 @@ fn test_log_find_child() {
         None,
         log.find_child(
             None,
-            &Action::new(
+            Action::new(
                 Seat::East,
                 ActionType::BidTop,
                 ActionData::Call {
@@ -211,7 +211,7 @@ fn test_log_find_child() {
         Some(2),
         log.find_child(
             Some(1),
-            &Action::new(
+            Action::new(
                 Seat::North,
                 ActionType::DealerDiscard,
                 ActionData::Card { card: card("qs") },
@@ -222,7 +222,7 @@ fn test_log_find_child() {
         Some(8),
         log.find_child(
             Some(7),
-            &Action::new(
+            Action::new(
                 Seat::North,
                 ActionType::DealerDiscard,
                 ActionData::Card { card: card("qs") },
@@ -233,7 +233,7 @@ fn test_log_find_child() {
         None,
         log.find_child(
             Some(6),
-            &Action::new(
+            Action::new(
                 Seat::North,
                 ActionType::DealerDiscard,
                 ActionData::Card { card: card("qs") },

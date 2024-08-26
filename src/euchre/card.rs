@@ -133,11 +133,11 @@ impl Card {
         }
     }
 
-    pub fn is_trump(&self, trump: Suit) -> bool {
+    pub fn is_trump(self, trump: Suit) -> bool {
         self.suit == trump || matches!(self.rank, Rank::Jack) && self.suit.color() == trump.color()
     }
 
-    pub fn is_following(&self, trump: Suit, lead: Card) -> bool {
+    pub fn is_following(self, trump: Suit, lead: Card) -> bool {
         match (self.is_trump(trump), lead.is_trump(trump)) {
             (true, true) => true,
             (true, false) | (false, true) => false,
@@ -145,7 +145,7 @@ impl Card {
         }
     }
 
-    pub fn effective_suit(&self, trump: Suit) -> Suit {
+    pub fn effective_suit(self, trump: Suit) -> Suit {
         if self.is_trump(trump) {
             trump
         } else {
@@ -153,7 +153,7 @@ impl Card {
         }
     }
 
-    pub fn value(&self, trump: Suit, lead: Card) -> u8 {
+    pub fn value(self, trump: Suit, lead: Card) -> u8 {
         if self.is_trump(trump) {
             match self.rank {
                 Rank::Nine => 7,
@@ -183,7 +183,7 @@ impl Card {
         }
     }
 
-    pub fn trumpless_value(&self, lead: Card) -> u8 {
+    pub fn trumpless_value(self, lead: Card) -> u8 {
         if self.suit == lead.suit {
             match self.rank {
                 Rank::Nine => 1,

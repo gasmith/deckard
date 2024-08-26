@@ -91,7 +91,7 @@ impl Round for BaseRound {
 }
 
 /// Filters the teammate for a loner hand.
-fn filter_seat(contract: &Contract, seat: Seat) -> Seat {
+fn filter_seat(contract: Contract, seat: Seat) -> Seat {
     if contract.alone && seat == contract.maker.opposite() {
         seat.next()
     } else {
@@ -104,14 +104,14 @@ impl BaseRound {
         match (action, data) {
             (ActionType::BidTop, ActionData::Pass) => self.pass_top(seat),
             (ActionType::BidTop, ActionData::Call { suit, alone }) => {
-                self.bid_top(seat, suit, alone)?
+                self.bid_top(seat, suit, alone)?;
             }
             (ActionType::BidOther, ActionData::Pass) => self.pass_other(seat)?,
             (ActionType::BidOther, ActionData::Call { suit, alone }) => {
-                self.bid_other(seat, suit, alone)?
+                self.bid_other(seat, suit, alone)?;
             }
             (ActionType::DealerDiscard, ActionData::Card { card }) => {
-                self.dealer_discard(seat, card)?
+                self.dealer_discard(seat, card)?;
             }
             (ActionType::Lead, ActionData::Card { card }) => self.lead(seat, card)?,
             (ActionType::Follow, ActionData::Card { card }) => self.follow(seat, card)?,
@@ -129,9 +129,7 @@ impl BaseRound {
     }
 
     fn bid_top(&mut self, maker: Seat, suit: Suit, alone: bool) -> Result<(), PlayerError> {
-        if suit != self.top.suit {
-            Err(PlayerError::MustCallTopSuit(self.top.suit))
-        } else {
+        if suit == self.top.suit {
             let contract = Contract { maker, suit, alone };
             self.contract = Some(contract);
             self.hands
@@ -141,6 +139,8 @@ impl BaseRound {
             self.next_action = Some(ExpectAction::new(self.dealer, ActionType::DealerDiscard));
             self.events.push_back(Event::Call(contract));
             Ok(())
+        } else {
+            Err(PlayerError::MustCallTopSuit(self.top.suit))
         }
     }
 
@@ -178,7 +178,7 @@ impl BaseRound {
         let trick = Trick::new(contract.suit, seat, card);
         self.tricks.push(trick);
         self.next_action = Some(ExpectAction::new(
-            filter_seat(&contract, seat.next()),
+            filter_seat(contract, seat.next()),
             ActionType::Follow,
         ));
         Ok(())
@@ -194,7 +194,7 @@ impl BaseRound {
         assert!(trick.len() < trick_size);
 
         let hand = self.hands.get_mut(&seat).expect("hand exists");
-        if !trick.is_following_lead(hand, &card) {
+        if !trick.is_following_lead(hand, card) {
             return Err(PlayerError::MustFollowLead(seat, trick.lead().1));
         }
 
@@ -203,7 +203,7 @@ impl BaseRound {
 
         if trick.len() < trick_size {
             self.next_action = Some(ExpectAction::new(
-                filter_seat(&contract, seat.next()),
+                filter_seat(contract, seat.next()),
                 ActionType::Follow,
             ));
         } else {
@@ -240,7 +240,11 @@ impl BaseRound {
     }
 
     fn first_trick(&mut self) {
-        let contract = self.contract.as_ref().expect("contract must be set");
+        let contract = self
+            .contract
+            .as_ref()
+            .copied()
+            .expect("contract must be set");
         if contract.alone {
             self.tricks.set_trick_size(3);
         }
