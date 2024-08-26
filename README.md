@@ -28,6 +28,17 @@ To run the game, simply:
 $ cargo run
 ```
 
+## Demo
+
+Basic gameplay:
+
+![Demo](images/demo.gif?raw=true)
+
+During game play, you can open the history explorer with the `!` key, and try
+out alternative lines of play by selecting a point in the history:
+
+![History demo](images/history.gif?raw=true)
+
 ## To Do
 
 ### Bugs
