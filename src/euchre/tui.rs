@@ -216,6 +216,7 @@ impl Tui {
 
             // Events are informational, any key steps forward.
             (Mode::Event(Event::Game(_)), _) => (),
+            (Mode::Event(Event::Round(_)), _) => self.next_round(),
             (Mode::Event(_), _) => self.game_step(),
 
             // Hand management.
@@ -274,6 +275,12 @@ impl Tui {
         Ok(())
     }
 
+    /// Starts the next round of the game.
+    fn next_round(&mut self) {
+        self.game.next_round();
+        self.game_step();
+    }
+
     /// Advances the state of the game until an event occurs, or the game is
     /// blocked waiting on a non-robot player's action. Internally takes care
     /// of advancing to the next round, if the game is not over.
@@ -286,14 +293,13 @@ impl Tui {
             }
 
             // Check for end of round & end of game.
-            if self.game.round().outcome().is_some() {
-                self.game.next_round();
+            if let Some(outcome) = self.game.round().outcome() {
                 if let Some(outcome) = self.game.outcome() {
                     self.mode = Mode::event(Event::Game(outcome));
-                    break;
                 } else {
-                    continue;
+                    self.mode = Mode::event(Event::Round(outcome));
                 }
+                break;
             }
 
             // Handle round actions.

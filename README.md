@@ -33,9 +33,6 @@ $ cargo run
 ### Bugs
 
 - Improve test coverage.
-- Game score can be incremented multiple times while exploring history.
-  - Separate out "end of round" from "start of next round"?
-  - Clone the `Round` and decouple exploration from game state.
 - History widget needs to be scrolly.
 
 ### Functionality
