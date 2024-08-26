@@ -12,7 +12,7 @@ mod tui;
 use self::action::{Action, ActionData, ActionType, ExpectAction};
 use self::card::{Card, Deck, Rank, Suit};
 use self::error::{PlayerError, RoundError};
-use self::game::{Game, GameOutcome};
+use self::game::Game;
 use self::player::{Console, Player, Robot};
 use self::round::{
     BaseRound, Contract, Log, LogId, LoggingRound, PlayerState, RawLog, Round, RoundConfig,
@@ -22,15 +22,22 @@ use self::seat::{Seat, Team};
 use self::trick::Trick;
 use self::tui::{tui_init, tui_restore, Tui};
 
+/// An event that occurs during the game.
 #[derive(Debug, Clone)]
 enum Event {
+    /// The dealer dealt and revealed the top card.
     Deal(Seat, Card),
+    /// A player declared a contract.
     Call(Contract),
+    /// The trick is over.
     Trick(Trick),
+    /// The round is over.
     Round(RoundOutcome),
-    Game(GameOutcome),
+    /// The game is over.
+    Game(Team),
 }
 
+/// Runs the game with a simple command-line interface.
 pub fn cli_main() {
     let console = Console::default().into_player();
     let robot = Robot::default().into_player();
@@ -65,6 +72,7 @@ pub fn cli_main() {
     serde_json::to_writer(std::io::stderr(), &log).unwrap();
 }
 
+/// Runs the game in a rich terminal UI.
 pub fn tui_main() {
     let tui = Tui::default();
     let terminal = tui_init().unwrap();

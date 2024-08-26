@@ -1,7 +1,8 @@
-//! Error types
+//! Errors
 
 use super::{ActionType, Card, LogId, Seat, Suit};
 
+/// An invalid action taken by a player.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum PlayerError {
     /// The dealer is required to choose a suit after all players have passed.
@@ -25,20 +26,31 @@ pub enum PlayerError {
     MustFollowLead(Seat, Card),
 }
 
+/// An error that can occur during the round.
 #[derive(Debug, thiserror::Error)]
 pub enum RoundError {
+    /// Not playing with a full deck.
     #[error("deck is missing cards")]
     IncompleteDeck,
+    /// The deck has duplicate cards.
     #[error("deck contains duplicate card")]
     DuplicateCard,
+    /// A player has too many or too few cards.
+    #[error("a player has the incorrect number of cards")]
+    InvalidHandSize,
+    /// The provided [`ActionData`](super::ActionData) is not appropriate for the [`ActionType`].
     #[error("action contains invalid data")]
     InvalidActionData,
+    /// The provided [`Action`](super::Action) doesn't match the expected [`ExpectAction`](super::ExpectAction).
     #[error("expected {seat} to {action}")]
     ExpectActioned { seat: Seat, action: ActionType },
-    #[error("game over")]
-    GameOver,
-    #[error(transparent)]
-    Player(#[from] PlayerError),
+    /// The game is over, no more actions are expected.
+    #[error("round is over")]
+    RoundOver,
+    /// Invalid reference to a log record.
     #[error("invalid log id {0}")]
     InvalidLogId(LogId),
+    /// A player attempted to play an invalid action.
+    #[error(transparent)]
+    Player(#[from] PlayerError),
 }

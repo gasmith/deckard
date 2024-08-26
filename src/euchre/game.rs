@@ -1,18 +1,17 @@
-//! The game of euchre.
+//! Game management.
+//!
+//! A game consists of a sequence of [`Round`]s, by which [`Team`]s score points. A team wins the
+//! game by scoring ten or more points.
 
 use std::collections::HashMap;
 
 use super::{Round, RoundConfig, Team};
 
-#[derive(Debug, Clone)]
-pub struct GameOutcome {
-    pub team: Team,
-    #[allow(dead_code)]
-    pub score: HashMap<Team, u8>,
-}
-
+/// A game of euchre.
 pub struct Game<R> {
+    /// The current round.
     round: R,
+    /// The current scores.
     score: HashMap<Team, u8>,
 }
 
@@ -35,26 +34,27 @@ impl<R> Game<R>
 where
     R: Round,
 {
+    /// Returns an immutable reference to the current round.
     pub fn round(&self) -> &R {
         &self.round
     }
 
+    /// Returns an mutable reference to the current round.
     pub fn round_mut(&mut self) -> &mut R {
         &mut self.round
     }
 
-    pub fn outcome(&self) -> Option<GameOutcome> {
+    /// Returns the winning team, if the game is over.
+    pub fn winner(&self) -> Option<Team> {
         for (&team, &points) in &self.score {
             if points >= 10 {
-                return Some(GameOutcome {
-                    team,
-                    score: self.score.clone(),
-                });
+                return Some(team);
             }
         }
         None
     }
 
+    /// Returns the outcome of the game, if it is over.
     pub fn score(&self, team: Team) -> u8 {
         self.score.get(&team).copied().unwrap_or_default()
     }
@@ -64,6 +64,8 @@ impl<R> Game<R>
 where
     R: Round + From<RoundConfig>,
 {
+    /// Updates the score from the outcome of the current round, and begins a new round. It is the
+    /// caller's responsibility to ensure that the current round is finished.
     pub fn next_round(&mut self) {
         let outcome = self.round.outcome().expect("round must be over");
         let score = self.score.entry(outcome.team).or_default();

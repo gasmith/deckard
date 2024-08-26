@@ -1,3 +1,5 @@
+//! Rich terminal UI.
+
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, stdout, Stdout};
@@ -30,6 +32,7 @@ use super::{
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
+/// Initializes the terminal for the TUI.
 pub fn tui_init() -> io::Result<Term> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -38,12 +41,14 @@ pub fn tui_init() -> io::Result<Term> {
     Ok(terminal)
 }
 
+/// Restores the original terminal mode.
 pub fn tui_restore() -> io::Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
 }
 
+/// Helper struct to keep track of UI areas in the layout.
 struct Areas {
     arena: Rect,
     score: Rect,
@@ -54,6 +59,7 @@ struct Areas {
     history: Rect,
 }
 impl Areas {
+    /// Performs layout math to figure out the render areas.
     fn new(frame: &Frame, mode: &Mode) -> Self {
         let [game, history] = Layout::new(
             Direction::Horizontal,
@@ -103,11 +109,16 @@ impl Areas {
     }
 }
 
+/// Modal interface state.
 #[derive(Debug)]
 enum Mode {
+    /// Display an event to the user.
     Event(Event),
+    /// Prompt the user to select a card from a player's hand.
     Hand(Hand, HandState),
+    /// Prompt the user to select an action for the player.
     ActionChoice(ActionChoice, ActionChoiceState),
+    /// Show the interactive history explorer.
     History(History, HistoryState),
 }
 
@@ -126,14 +137,22 @@ impl Mode {
     }
 }
 
+/// The human player's seat at the table.
 const HUMAN_SEAT: Seat = Seat::South;
 
+/// Terminal UI state.
 pub struct Tui {
+    /// The current mode.
     mode: Mode,
+    /// The game being played.
     game: Game<LoggingRound>,
+    /// The robot implementation.
     robot: Robot,
+    /// An error message to display to the user.
     error: Option<String>,
+    /// A debug message to display to the user.
     debug: Option<String>,
+    /// Set to true ot exit the main loop.
     exit: bool,
 }
 
@@ -153,6 +172,7 @@ impl Default for Tui {
 }
 
 impl Tui {
+    /// Runs the terminal UI until the user exits.
     pub fn run(mut self, mut terminal: Term) -> anyhow::Result<()> {
         while !self.exit {
             terminal.draw(|frame| self.render_frame(frame))?;
@@ -168,12 +188,13 @@ impl Tui {
         frame.render_widget(Arena::new(&self.mode, round), areas.arena);
         frame.render_widget(Scoreboard::new(&self.game), areas.score);
         frame.render_widget(Info::new(&self.mode, &self.game), areas.info);
-        if let Mode::Hand(hand, state) = &mut self.mode {
-            frame.render_stateful_widget(hand.clone(), areas.hand, state);
-        } else if !matches!(self.mode, Mode::Event(Event::Game(_))) {
-            let seat = HUMAN_SEAT;
-            let hand = round.player_state(seat).sorted_hand();
-            frame.render_widget(Hand::new(seat, hand), areas.hand);
+        match &mut self.mode {
+            Mode::Hand(hand, state) => {
+                frame.render_stateful_widget(hand.clone(), areas.hand, state);
+            }
+            Mode::History(_, _) => self.render_current_hand(frame, areas.hand),
+            Mode::Event(Event::Game(_) | Event::Round(_)) => (),
+            _ => self.render_hand_for_seat(HUMAN_SEAT, frame, areas.hand),
         }
         if let Mode::ActionChoice(choice, state) = &mut self.mode {
             frame.render_stateful_widget(choice.clone(), areas.action, state);
@@ -191,6 +212,19 @@ impl Tui {
         frame.render_widget(Paragraph::new(lines), areas.message);
     }
 
+    /// Renders the current player's hand.
+    fn render_current_hand(&self, frame: &mut Frame, area: Rect) {
+        if let Some(seat) = self.game.round().next_action().map(|expect| expect.seat) {
+            self.render_hand_for_seat(seat, frame, area);
+        }
+    }
+
+    /// Renders the hand for the specified player.
+    fn render_hand_for_seat(&self, seat: Seat, frame: &mut Frame, area: Rect) {
+        let hand = self.game.round().player_state(seat).sorted_hand();
+        frame.render_widget(Hand::new(seat, hand), area);
+    }
+
     /// Top-level event handler.
     fn handle_events(&mut self) -> io::Result<()> {
         let event::Event::Key(key) = event::read()? else {
@@ -203,12 +237,15 @@ impl Tui {
 
         #[allow(clippy::match_same_arms)]
         match (&mut self.mode, key.code) {
-            (_, KeyCode::Char('q')) => self.exit = true,
+            // Save the game log
             (_, KeyCode::Char('s')) => self.save_round(),
 
             // Toggle history mode
-            (Mode::History(_, _), KeyCode::Char('!')) => self.game_step(),
+            (Mode::History(_, _), KeyCode::Char('!' | 'q')) => self.game_step(),
             (_, KeyCode::Char('!')) => self.enter_history_mode(),
+
+            // Quit
+            (_, KeyCode::Char('q')) => self.exit = true,
 
             // Event acknowledgement
             (Mode::Event(Event::Game(_)), _) => (),
@@ -280,8 +317,8 @@ impl Tui {
 
             // Check for end of round & end of game.
             if let Some(outcome) = self.game.round().outcome() {
-                if let Some(outcome) = self.game.outcome() {
-                    self.mode = Mode::event(Event::Game(outcome));
+                if let Some(team) = self.game.winner() {
+                    self.mode = Mode::event(Event::Game(team));
                 } else {
                     self.mode = Mode::event(Event::Round(outcome));
                 }

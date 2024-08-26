@@ -1,15 +1,20 @@
-use std::{fmt::Display, str::FromStr};
+//! French deck
+
+use std::fmt::Display;
+use std::str::FromStr;
 
 use ansi_term::ANSIString;
 use ratatui::text::Span;
 use serde::{Deserialize, Serialize};
 
+/// Suit color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
     Red,
     Black,
 }
 
+/// French suits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Suit {
     Club,
@@ -17,39 +22,15 @@ pub enum Suit {
     Spade,
     Heart,
 }
+
 impl Suit {
+    /// Returns an array of all suits, in no particular order.
     pub fn all_suits() -> &'static [Suit] {
         static SUITS: [Suit; 4] = [Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade];
         &SUITS
     }
 
-    pub fn to_ansi_string(self) -> ANSIString<'static> {
-        use ansi_term::Colour::Red;
-        match self {
-            Suit::Club | Suit::Spade => self.to_string().into(),
-            Suit::Diamond | Suit::Heart => Red.paint(self.to_string()),
-        }
-    }
-
-    pub fn to_span(self) -> Span<'static> {
-        use ratatui::style::Color;
-        match self {
-            Suit::Club | Suit::Spade => Span::raw(self.to_string()),
-            Suit::Diamond | Suit::Heart => Span::raw(self.to_string()).style(Color::Red),
-        }
-    }
-
-    pub fn from_char(s: char) -> Option<Self> {
-        let suit = match s {
-            '♣' | 'C' | 'c' => Suit::Club,
-            '♦' | 'D' | 'd' => Suit::Diamond,
-            '♥' | 'H' | 'h' => Suit::Heart,
-            '♠' | 'S' | 's' => Suit::Spade,
-            _ => return None,
-        };
-        Some(suit)
-    }
-
+    /// Returns the color of this suit.
     pub fn color(self) -> Color {
         match self {
             Suit::Diamond | Suit::Heart => Color::Red,
@@ -57,6 +38,37 @@ impl Suit {
         }
     }
 
+    /// Returns a string representation of the suit, decorated with ANSI color codes.
+    pub fn to_ansi_string(self) -> ANSIString<'static> {
+        use ansi_term::Colour::Red;
+        match self.color() {
+            Color::Black => self.to_string().into(),
+            Color::Red => Red.paint(self.to_string()),
+        }
+    }
+
+    /// Returns a [`ratatui::text::Span`] for the suit.
+    pub fn to_span(self) -> Span<'static> {
+        use ratatui::style::Color::Red;
+        match self.color() {
+            Color::Black => Span::raw(self.to_string()),
+            Color::Red => Span::raw(self.to_string()).style(Red),
+        }
+    }
+
+    /// Parses a suit from a character.
+    pub fn from_char(s: char) -> Option<Self> {
+        let suit = match s {
+            '♣' | '♧' | 'C' | 'c' => Suit::Club,
+            '♦' | '♢' | 'H' | 'h' => Suit::Heart,
+            '♥' | '♡' | 'D' | 'd' => Suit::Diamond,
+            '♠' | '♤' | 'S' | 's' => Suit::Spade,
+            _ => return None,
+        };
+        Some(suit)
+    }
+
+    /// Returns the other suit of the same color.
     pub fn to_matching_color(self) -> Self {
         match self {
             Suit::Club => Suit::Spade,
@@ -86,8 +98,8 @@ impl Display for Suit {
         let sym = match self {
             Suit::Club => "♣",
             Suit::Diamond => "♦",
-            Suit::Heart => "♥",
-            Suit::Spade => "♠",
+            Suit::Heart => "♡",
+            Suit::Spade => "♤",
         };
         f.write_str(sym)
     }

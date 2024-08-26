@@ -1,14 +1,19 @@
-//! Tricks
+//! Trick
 
 use std::fmt::Display;
 
 use crate::euchre::{Card, Seat, Suit};
 
+/// A trick played during a round.
 #[derive(Debug, Clone)]
 pub struct Trick {
+    /// The trump suit for this trick.
     pub trump: Suit,
+    /// The cards that have been played into this trick.
     pub cards: Vec<(Seat, Card)>,
+    /// The index of the best card played.
     pub best: usize,
+    /// The value of the best card played.
     pub best_value: u8,
 }
 
@@ -26,7 +31,7 @@ impl Display for Trick {
 }
 
 impl Trick {
-    /// Opens a new trick.
+    /// Creates a new trick.
     pub fn new(trump: Suit, leader: Seat, card: Card) -> Self {
         Self {
             trump,

@@ -1,4 +1,4 @@
-//! A round that's capable of logging.
+//! A round that maintains a log of actions taken.
 
 use delegate::delegate;
 
@@ -7,6 +7,7 @@ use crate::euchre::{
     RoundConfig, RoundError, Seat, Tricks,
 };
 
+/// A [`Round`] implementation that maintains a [`Log`] of all actions taken.
 #[derive(Debug)]
 pub struct LoggingRound {
     round: BaseRound,
@@ -54,23 +55,28 @@ impl Round for LoggingRound {
 }
 
 impl LoggingRound {
-    pub fn cursor(&self) -> Option<LogId> {
-        self.cursor
-    }
-
-    pub fn log(&self) -> &Log {
-        &self.log
-    }
-
+    /// Creates a new random [`LoggingRound`].
     pub fn random() -> Self {
         rand::random::<RoundConfig>().into()
     }
 
+    /// Returns a cursor pointing to the last action taken.
+    pub fn cursor(&self) -> Option<LogId> {
+        self.cursor
+    }
+
+    /// Returns an immutable reference to the log.
+    pub fn log(&self) -> &Log {
+        &self.log
+    }
+
+    /// Restarts the round.
     pub fn restart(&mut self) {
         self.cursor = None;
         self.round = BaseRound::from(self.log.config().clone());
     }
 
+    /// Seeks to the specified action in the log.
     pub fn seek(&mut self, id: Option<LogId>) -> Result<(), RoundError> {
         self.restart();
         if let Some(id) = id {

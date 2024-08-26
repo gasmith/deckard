@@ -1,3 +1,5 @@
+//! Euchre deck.
+
 use core::fmt;
 use std::{fmt::Display, str::FromStr};
 
@@ -10,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::french::Suit;
 
+/// Euchre card rank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Rank {
     Nine,
@@ -20,6 +23,7 @@ pub enum Rank {
     Ace,
 }
 impl Rank {
+    /// Returns an array of all ranks, in no particular order.
     pub fn all_ranks() -> &'static [Rank] {
         static RANKS: [Rank; 6] = [
             Rank::Nine,
@@ -32,6 +36,7 @@ impl Rank {
         &RANKS
     }
 
+    /// Parses a rank from a character.
     pub fn from_char(s: char) -> Option<Self> {
         let suit = match s {
             '9' => Rank::Nine,
@@ -59,9 +64,12 @@ impl Display for Rank {
     }
 }
 
+/// A euchre card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Card {
+    /// Card rank.
     pub rank: Rank,
+    /// Card suit.
     pub suit: Suit,
 }
 impl Display for Card {
@@ -111,12 +119,13 @@ impl<'de> Deserialize<'de> for Card {
         deserializer.deserialize_str(CardVisitor)
     }
 }
-
 impl Card {
+    /// Creates a new [`Card`].
     pub fn new(rank: Rank, suit: Suit) -> Self {
         Self { rank, suit }
     }
 
+    /// Returns a string representation of the card, decorated with ANSI color codes.
     pub fn to_ansi_string(self) -> ANSIString<'static> {
         use ansi_term::Colour::Red;
         match self.suit {
@@ -125,6 +134,7 @@ impl Card {
         }
     }
 
+    /// Returns a [`ratatui::text::Span`] for the card.
     pub fn to_span(self) -> Span<'static> {
         use ratatui::style::Color;
         match self.suit {
@@ -133,18 +143,13 @@ impl Card {
         }
     }
 
+    /// Returns true if the card is consindered to be trump, given the suit declared in the
+    /// contract.
     pub fn is_trump(self, trump: Suit) -> bool {
         self.suit == trump || matches!(self.rank, Rank::Jack) && self.suit.color() == trump.color()
     }
 
-    pub fn is_following(self, trump: Suit, lead: Card) -> bool {
-        match (self.is_trump(trump), lead.is_trump(trump)) {
-            (true, true) => true,
-            (true, false) | (false, true) => false,
-            (false, false) => self.suit == lead.suit,
-        }
-    }
-
+    /// Returns the effective suit for this card, given the suit declared in the contract.
     pub fn effective_suit(self, trump: Suit) -> Suit {
         if self.is_trump(trump) {
             trump
@@ -153,6 +158,12 @@ impl Card {
         }
     }
 
+    /// Returns true if the played card is the same effective suit as the card that was lead.
+    pub fn is_following(self, trump: Suit, lead: Card) -> bool {
+        self.effective_suit(trump) == lead.effective_suit(trump)
+    }
+
+    /// Returns the value of the card, for determining the winner of a trick.
     pub fn value(self, trump: Suit, lead: Card) -> u8 {
         if self.is_trump(trump) {
             match self.rank {
@@ -182,23 +193,10 @@ impl Card {
             0
         }
     }
-
-    pub fn trumpless_value(self, lead: Card) -> u8 {
-        if self.suit == lead.suit {
-            match self.rank {
-                Rank::Nine => 1,
-                Rank::Ten => 2,
-                Rank::Jack => 3,
-                Rank::Queen => 4,
-                Rank::King => 5,
-                Rank::Ace => 6,
-            }
-        } else {
-            0
-        }
-    }
 }
 
+/// A euchre deck.
+#[derive(Debug, Clone)]
 pub struct Deck {
     cards: Vec<Card>,
 }
@@ -218,10 +216,12 @@ impl Distribution<Deck> for Standard {
     }
 }
 impl Deck {
+    /// The number of cards remaining in the deck.
     pub fn len(&self) -> usize {
         self.cards.len()
     }
 
+    /// Removes a card from the deck.
     pub fn take(&mut self, n: usize) -> Vec<Card> {
         let idx = self.cards.len().saturating_sub(n);
         self.cards.split_off(idx)

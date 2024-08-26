@@ -1,4 +1,4 @@
-//! Trick management.
+//! Tricks played during a round.
 
 use std::convert::TryFrom;
 
@@ -28,14 +28,27 @@ impl Tricks {
             pub fn len(&self) -> usize;
             pub fn last(&self) -> Option<&Trick>;
             pub fn last_mut(&mut self) -> Option<&mut Trick>;
-            pub fn push(&mut self, trick: Trick);
         }
     }
 
+    /// Creates a new trick.
+    pub fn push(&mut self, trick: Trick) {
+        assert!(self.len() < 5);
+        self.tricks.push(trick);
+    }
+
+    /// Returns the number of cards in each trick.
+    pub fn trick_size(&self) -> usize {
+        self.trick_size
+    }
+
+    /// Sets the number of cards in each trick.
     pub fn set_trick_size(&mut self, trick_size: usize) {
+        assert!(matches!(trick_size, 3 | 4));
         self.trick_size = trick_size;
     }
 
+    /// Counts the number of completed tricks won by the specified team.
     pub fn win_count(&self, team: Team) -> u8 {
         let count = self
             .tricks

@@ -21,6 +21,41 @@ pub use log::{Id as LogId, Log, RawLog};
 pub use logging::LoggingRound;
 pub use tricks::Tricks;
 
+/// A trait for implementing a round of euchre.
+///
+/// ## Gameplay
+///
+/// A round is initiated by a deal, and then players bid for trump in clockwise order. Each player
+/// is given an opportunity to "order up" the top card into the dealer's hand and declare its suit
+/// as trump. When a player does so, the dealer acquires the top card, discards another card from
+/// their hand, and tricks begin.
+///
+/// If all players decline to make a contract over the top card, then each player is given an
+/// opportunity to name an alternative suit as trump. The dealer is forced to choose, if no one
+/// else will.
+///
+/// The first trick is led by the next player clockwise from the dealer. Each trick involves a card
+/// played, in clockwise order, from each player. When the trick is complete, the player who played
+/// the highest-valued card wins the trick and leads the next.
+///
+/// The round ends when all five tricks have been played, or when the defenders manage to
+/// win their third trick (and thereby "euchres" the makers). The score of the round is calculated
+/// based on the style of the contract, and the number of tricks taken.
+///
+/// ## State management
+///
+/// The round begins in an initial state, after cards have been dealt, and the top card has been
+/// upturned. To advance the state of the round, players are required to take actions. The identity
+/// of the next player and the action they are expected to take is always known deterministically,
+/// and may be obtained via [`next_action`](`Round::next_action`)
+///
+/// Once a player has chosen an action, it is applied using
+/// [`apply_action`](`Round::apply_action`).
+///
+/// ## Events
+///
+/// Certain actions trigger events, such as the end of a trick. These events are stored in a queue,
+/// which may be drained using [`pop_event`](`Round::pop_event`).
 pub trait Round {
     /// The dealer of this round.
     fn dealer(&self) -> Seat;
@@ -77,8 +112,11 @@ pub trait Round {
 /// Configuration & initial conditions for a round.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RoundConfig {
+    /// The dealer for this round.
     dealer: Seat,
+    /// Each player's hand, as dealt.
     hands: HashMap<Seat, Vec<Card>>,
+    /// The upturned card, as dealt.
     top: Card,
 }
 
@@ -89,6 +127,7 @@ impl Distribution<RoundConfig> for Standard {
 }
 
 impl RoundConfig {
+    /// Creates a new [`RoundConfig`], with the specified dealer & deck.
     pub fn new(dealer: Seat, mut deck: Deck) -> Result<Self, RoundError> {
         if deck.len() < 24 {
             return Err(RoundError::IncompleteDeck);
@@ -102,22 +141,27 @@ impl RoundConfig {
         Self { dealer, hands, top }.validate()
     }
 
+    /// Creates a [`RoundConfig`] with a random dealer and a shuffled deck.
     pub fn random() -> Self {
         rand::random()
     }
 
+    /// Creates a specified dealer and a shuffled deck.
     pub fn random_with_dealer(dealer: Seat) -> Self {
         let deck = rand::random();
         Self::new(dealer, deck).expect("deck is valid")
     }
 
+    /// Validates the configuration.
     fn validate(self) -> Result<Self, RoundError> {
-        let mut seen: HashSet<_> = self
-            .hands
-            .values()
-            .flat_map(|cards| cards.iter().copied())
-            .collect();
+        let mut seen: HashSet<_> = HashSet::with_capacity(21);
         seen.insert(self.top);
+        for hand in self.hands.values() {
+            if hand.len() != 5 {
+                return Err(RoundError::InvalidHandSize);
+            }
+            seen.extend(hand);
+        }
         if seen.len() == 21 {
             Ok(self)
         } else {
@@ -148,6 +192,7 @@ impl Display for RoundOutcome {
 }
 
 impl RoundOutcome {
+    /// Creates a new [`RoundOutcome`].
     pub fn new(team: Team, points: u8) -> Self {
         RoundOutcome { team, points }
     }
@@ -156,15 +201,22 @@ impl RoundOutcome {
 /// The state visible to a particular seat.
 #[derive(Debug)]
 pub struct PlayerState<'a> {
+    /// The player who has access to this state.
     pub seat: Seat,
+    /// The dealer of this round.
     pub dealer: Seat,
+    /// The top card for this round.
     pub top: Card,
+    /// The contract for this round, if one has been declared.
     pub contract: Option<Contract>,
+    /// The player's hand.
     pub hand: &'a Vec<Card>,
+    /// The tricks played so far this round.
     pub tricks: &'a Tricks,
 }
 
 impl<'a> PlayerState<'a> {
+    /// Creates a new [`PlayerState`].
     pub fn new(
         seat: Seat,
         dealer: Seat,
@@ -183,7 +235,8 @@ impl<'a> PlayerState<'a> {
         }
     }
 
-    // TODO: Maybe build a Hand abstraction?
+    /// Returns the player's hand, in sorted order, based on effective suit and
+    /// intrinsic card value.
     pub fn sorted_hand(&self) -> Vec<Card> {
         let mut cards = self.hand.clone();
         if let Some(contract) = self.contract {

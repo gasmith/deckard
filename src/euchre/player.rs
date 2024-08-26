@@ -1,3 +1,5 @@
+//! Player interfacing
+
 use super::{ActionData, ActionType, Card, Event, PlayerError, PlayerState, Suit, Trick};
 
 mod console;

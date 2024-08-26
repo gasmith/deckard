@@ -1,4 +1,4 @@
-//! Base round.
+//! Core round implementation.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -7,23 +7,22 @@ use super::{
     Round, RoundConfig, RoundError, Seat, Suit, Trick, Tricks,
 };
 
-/// The main state machine for the round.
-///
-/// A new round is initiated by a deal into the `BidTop` state. The seats
-/// then bid for the top card. If a bid is made, the top card is replaces a
-/// card in the dealer's hand, and the round progresses to `Play`.
-///
-/// Otherwise, the state machine advances to `BidOther`, where seats bid for
-/// any suit other than that of the top card. The dealer is required to choose
-/// a suit, if no other seat will.
+/// The core implementation for [`Round`], around which other implementations are built.
 #[derive(Debug)]
 pub struct BaseRound {
+    /// The dealer for this round.
     dealer: Seat,
-    hands: HashMap<Seat, Vec<Card>>,
+    /// The upturned card.
     top: Card,
+    /// The content of each player's hand.
+    hands: HashMap<Seat, Vec<Card>>,
+    /// The established contract, once bidding is over.
     contract: Option<Contract>,
+    /// Tricks played during this round.
     tricks: Tricks,
+    /// A queue of unacknowledged events.
     events: VecDeque<Event>,
+    /// The next action required to advance the round.
     next_action: Option<ExpectAction>,
 }
 
@@ -33,8 +32,8 @@ impl From<RoundConfig> for BaseRound {
         let top = config.top;
         BaseRound {
             dealer,
-            hands: config.hands,
             top,
+            hands: config.hands,
             contract: None,
             tricks: Tricks::default(),
             events: [Event::Deal(dealer, top)].into(),
@@ -81,11 +80,11 @@ impl Round for BaseRound {
 
     fn apply_action(&mut self, action: Action) -> Result<(), RoundError> {
         match (self.next_action, action) {
-            (None, _) => Err(RoundError::GameOver),
+            (None, _) => Err(RoundError::RoundOver),
             (Some(ExpectAction { seat, action }), a) if seat != a.seat || action != a.action => {
                 Err(RoundError::ExpectActioned { seat, action })
             }
-            (_, a) => self.handle(a),
+            (_, a) => self.apply(a),
         }
     }
 }
@@ -100,7 +99,8 @@ fn filter_seat(contract: Contract, seat: Seat) -> Seat {
 }
 
 impl BaseRound {
-    fn handle(&mut self, Action { seat, action, data }: Action) -> Result<(), RoundError> {
+    /// Applies the specified action to advance the state machine.
+    fn apply(&mut self, Action { seat, action, data }: Action) -> Result<(), RoundError> {
         match (action, data) {
             (ActionType::BidTop, ActionData::Pass) => self.pass_top(seat),
             (ActionType::BidTop, ActionData::Call { suit, alone }) => {
@@ -120,6 +120,7 @@ impl BaseRound {
         Ok(())
     }
 
+    /// Handles the case where the player declines to order up the top card.
     fn pass_top(&mut self, seat: Seat) {
         if seat == self.dealer {
             self.next_action = Some(ExpectAction::new(seat.next(), ActionType::BidOther));
@@ -128,6 +129,7 @@ impl BaseRound {
         }
     }
 
+    /// Handles the case where the player order up the top card.
     fn bid_top(&mut self, maker: Seat, suit: Suit, alone: bool) -> Result<(), PlayerError> {
         if suit == self.top.suit {
             let contract = Contract { maker, suit, alone };
@@ -144,6 +146,7 @@ impl BaseRound {
         }
     }
 
+    /// Handles the case where the player declines to call an alternative suit.
     fn pass_other(&mut self, seat: Seat) -> Result<(), PlayerError> {
         if seat == self.dealer {
             Err(PlayerError::DealerMustBidOther)
@@ -153,6 +156,7 @@ impl BaseRound {
         }
     }
 
+    /// Handles the case where the player calls an alternative suit.
     fn bid_other(&mut self, maker: Seat, suit: Suit, alone: bool) -> Result<(), PlayerError> {
         if suit == self.top.suit {
             Err(PlayerError::CannotCallTopSuit(self.top.suit))
@@ -165,6 +169,7 @@ impl BaseRound {
         }
     }
 
+    /// Handles the case where the dealer discards a card after picking up the top card.
     fn dealer_discard(&mut self, dealer: Seat, card: Card) -> Result<(), PlayerError> {
         assert_eq!(dealer, self.dealer);
         self.find_and_discard(dealer, card)?;
@@ -172,6 +177,7 @@ impl BaseRound {
         Ok(())
     }
 
+    /// Handles the start of a new trick.
     fn lead(&mut self, seat: Seat, card: Card) -> Result<(), PlayerError> {
         let contract = self.contract.expect("contract must be set");
         self.find_and_discard(seat, card)?;
@@ -184,13 +190,13 @@ impl BaseRound {
         Ok(())
     }
 
+    /// Handles the play of a card into a pending trick.
     fn follow(&mut self, seat: Seat, card: Card) -> Result<(), PlayerError> {
         let contract = self.contract.expect("contract must be set");
         let index = self.find_card(seat, card)?;
 
-        assert!(self.tricks.len() <= 5);
+        let trick_size = self.tricks.trick_size();
         let trick = self.tricks.last_mut().expect("trick must be started");
-        let trick_size = if contract.alone { 3 } else { 4 };
         assert!(trick.len() < trick_size);
 
         let hand = self.hands.get_mut(&seat).expect("hand exists");
@@ -220,11 +226,13 @@ impl BaseRound {
         Ok(())
     }
 
+    /// Finds a card among the specified player's hand and discards it.
     fn find_and_discard(&mut self, seat: Seat, card: Card) -> Result<(), PlayerError> {
         self.find_card(seat, card)
             .map(|index| self.discard(seat, index))
     }
 
+    /// Finds a card among the specified player's hand.
     fn find_card(&mut self, seat: Seat, card: Card) -> Result<usize, PlayerError> {
         self.hands
             .get(&seat)
@@ -234,11 +242,13 @@ impl BaseRound {
             .ok_or(PlayerError::CardNotHeld(seat, card))
     }
 
+    /// Discards the specified card from the player's hand.
     fn discard(&mut self, seat: Seat, index: usize) {
         let hand = self.hands.get_mut(&seat).expect("hand exists");
         hand.remove(index);
     }
 
+    /// Sets up the state machine for the first trick, choosing the eldest hand to lead.
     fn first_trick(&mut self) {
         let contract = self
             .contract
@@ -252,6 +262,7 @@ impl BaseRound {
         self.next_trick(seat);
     }
 
+    /// Sets up the state machine for the next trick.
     fn next_trick(&mut self, seat: Seat) {
         self.next_action = Some(ExpectAction {
             seat,

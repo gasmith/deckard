@@ -167,9 +167,7 @@ impl Player for Console {
             Event::Round(outcome) => {
                 println!("{:}: {} points", outcome.team, outcome.points);
             }
-            Event::Game(outcome) => {
-                println!("{:} wins!", outcome.team);
-            }
+            Event::Game(team) => println!("{team} wins!"),
         }
     }
 

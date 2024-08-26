@@ -7,7 +7,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::euchre::{Contract, Event, ExpectAction, Game, GameOutcome, Round, RoundOutcome, Seat};
+use crate::euchre::{Contract, Event, ExpectAction, Game, Round, RoundOutcome, Seat};
 
 use super::Mode;
 
@@ -19,7 +19,7 @@ enum First {
 impl First {
     fn into_line(self) -> Line<'static> {
         match self {
-            Self::Dealer(dealer) => format!("{dealer}.").into(),
+            Self::Dealer(dealer) => format!("{dealer} dealt.").into(),
             Self::Contract(contract) => Line::from_iter([
                 format!("{} called ", contract.maker).into(),
                 contract.suit.to_span(),
@@ -44,9 +44,7 @@ impl Second {
             Self::Event(Event::Round(RoundOutcome { team, points })) => {
                 format!("{} win {points} points.", team.to_abbr()).into()
             }
-            Self::Event(Event::Game(GameOutcome { team, .. })) => {
-                format!("{} wins the game.", team.to_abbr()).into()
-            }
+            Self::Event(Event::Game(team)) => format!("{} wins the game.", team.to_abbr()).into(),
             Self::Expect(ExpectAction { seat, action }) => format!("{seat} to {action}.").into(),
             _ => Line::default(),
         }

@@ -36,17 +36,18 @@ impl Distribution<Seat> for Standard {
 }
 
 impl Seat {
-    /// All possible table positions.
+    /// All possible table positions, in clockwise order.
     pub fn all_seats() -> &'static [Seat; 4] {
         static SEATS: [Seat; 4] = [Seat::North, Seat::East, Seat::South, Seat::West];
         &SEATS
     }
 
+    /// The team for this table position.
     pub fn team(self) -> Team {
         Team::from(self)
     }
 
-    /// Converts an ASCII character to a direction.
+    /// Parses table position from a character.
     #[cfg(test)]
     pub fn from_char(s: char) -> Option<Self> {
         let dir = match s {
@@ -59,6 +60,7 @@ impl Seat {
         Some(dir)
     }
 
+    /// Returns an abbreviated name for the table position.
     pub fn to_abbr(self) -> char {
         match self {
             Seat::North => 'N',
@@ -122,6 +124,7 @@ impl Display for Team {
     }
 }
 impl Team {
+    /// Returns an abbreviated name for the team.
     pub fn to_abbr(self) -> &'static str {
         match self {
             Team::NorthSouth => "N/S",
@@ -129,7 +132,7 @@ impl Team {
         }
     }
 
-    /// Returns the other team.
+    /// The other team.
     pub fn other(self) -> Team {
         match self {
             Team::NorthSouth => Team::EastWest,
