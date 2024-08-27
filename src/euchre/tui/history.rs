@@ -5,13 +5,14 @@
 //!  - Tree structure!
 
 use std::collections::HashMap;
+use std::iter::FromIterator;
 
 use ratatui::layout::Offset;
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, ListState, Padding, Widget};
 
-use crate::euchre::{Action, ActionData, ActionType, Log, LogId};
+use crate::euchre::{Action, ActionData, ActionType, Log, LogId, Seat};
 
 pub type HistoryState = ListState;
 
@@ -25,8 +26,14 @@ const VERT_RIGHT: char = '├';
 const ARC_UP_RIGHT: char = '╰';
 
 impl History {
-    pub fn new(log: &Log) -> Self {
-        let mut items = vec![HistoryItem::Deal];
+    pub fn new(cursor: Option<LogId>, log: &Log) -> Self {
+        let dealer = log.config().dealer();
+        let mut items = vec![HistoryItem::Deal { dealer }];
+
+        if cursor.is_none() {
+            // Should be VERT_RIGHT if there are siblings.
+            items.push(HistoryItem::cursor(cursor, format!("{ARC_UP_RIGHT} ")));
+        }
 
         let mut child_prefixes: HashMap<LogId, String> = HashMap::new();
         for node in log.traverse() {
@@ -35,27 +42,33 @@ impl History {
                 .and_then(|id| child_prefixes.get(&id))
                 .cloned()
                 .unwrap_or_default();
-            if node.last_sibling {
-                child_prefixes.insert(node.id, format!("{prefix}  "));
-                prefix.push(ARC_UP_RIGHT);
+            let (char, child_prefix) = if node.last_sibling {
+                (ARC_UP_RIGHT, format!("{prefix}  "))
             } else if node.sibling {
-                child_prefixes.insert(node.id, format!("{prefix}{VERT} "));
-                prefix.push(VERT_RIGHT);
+                (VERT_RIGHT, format!("{prefix}{VERT} "))
             } else if node.leaf {
-                prefix.push(ARC_UP_RIGHT);
+                (ARC_UP_RIGHT, format!("{prefix}  "))
             } else {
-                child_prefixes.insert(node.id, prefix.clone());
-                prefix.push(VERT);
-            }
+                (VERT, prefix.clone())
+            };
+            prefix.push(char);
             prefix.push(' ');
-            items.push(HistoryItem::action(node.id, node.action, prefix));
+            child_prefixes.insert(node.id, child_prefix);
+            items.push(HistoryItem::action(node.parent, node.action, &prefix));
+
+            if cursor.is_some_and(|id| id == node.id) {
+                let child_prefix = child_prefixes.get(&node.id).expect("just inserted");
+                // Should be VERT_RIGHT if there are siblings.
+                let prefix = format!("{child_prefix}{ARC_UP_RIGHT} ");
+                items.push(HistoryItem::cursor(cursor, prefix));
+            }
         }
 
         Self { items }
     }
 
     pub fn position(&self, id: Option<LogId>) -> Option<usize> {
-        self.items.iter().position(|item| item.id() == id)
+        self.items.iter().position(|item| item.parent() == id)
     }
 
     /// Returns the selected log entry in the history. Note that the log entry pertaining to the
@@ -65,18 +78,25 @@ impl History {
         state
             .selected()
             .and_then(|idx| self.items.get(idx))
-            .map(HistoryItem::id)
+            .map(HistoryItem::parent)
     }
 
     fn get_item_bounds(&self, state: &HistoryState, height: usize) -> (usize, usize) {
+        const PADDING: usize = 1;
         let max = self.items.len().saturating_sub(1);
         let delta = height.saturating_sub(1);
         let offset = state.offset().min(max);
         let first = offset;
         let last = (offset + delta).min(max);
         match state.selected() {
-            Some(index) if index < first => (index, (index + delta).min(max)),
-            Some(index) if index > last => (index.saturating_sub(delta), index),
+            Some(index) if index <= first => {
+                let first = index.saturating_sub(PADDING);
+                (first, (first + delta).min(max))
+            }
+            Some(index) if index >= last => {
+                let last = (index + PADDING).min(max);
+                (last.saturating_sub(delta), last)
+            }
             _ => (first, last),
         }
     }
@@ -84,10 +104,16 @@ impl History {
 
 #[derive(Debug, Clone)]
 pub enum HistoryItem {
-    Deal,
+    Deal {
+        dealer: Seat,
+    },
     Action {
-        id: LogId,
+        parent: Option<LogId>,
         action: Action,
+        prefix: String,
+    },
+    Cursor {
+        parent: Option<LogId>,
         prefix: String,
     },
 }
@@ -117,21 +143,32 @@ fn action_spans(action: Action) -> Vec<Span<'static>> {
 }
 
 impl HistoryItem {
-    pub fn action(id: LogId, action: Action, prefix: String) -> Self {
-        Self::Action { id, action, prefix }
+    pub fn action<S: Into<String>>(parent: Option<LogId>, action: Action, prefix: S) -> Self {
+        Self::Action {
+            parent,
+            action,
+            prefix: prefix.into(),
+        }
     }
 
-    pub fn id(&self) -> Option<LogId> {
+    pub fn cursor<S: Into<String>>(parent: Option<LogId>, prefix: S) -> Self {
+        Self::Cursor {
+            parent,
+            prefix: prefix.into(),
+        }
+    }
+
+    pub fn parent(&self) -> Option<LogId> {
         match self {
-            Self::Deal => None,
-            Self::Action { id, .. } => Some(*id),
+            Self::Deal { .. } => None,
+            Self::Action { parent, .. } | Self::Cursor { parent, .. } => *parent,
         }
     }
 
     pub fn line(self, selected: bool) -> Line<'static> {
         match self {
-            Self::Deal => {
-                let line = Line::raw("Deal");
+            Self::Deal { dealer } => {
+                let line = Line::from(format!("{dealer} dealt"));
                 if selected {
                     line.reversed()
                 } else {
@@ -145,6 +182,13 @@ impl HistoryItem {
                 }
                 spans.insert(0, Span::raw(prefix));
                 Line::from(spans)
+            }
+            Self::Cursor { prefix, .. } => {
+                let mut span = Span::raw("(you are here)");
+                if selected {
+                    span = span.reversed();
+                }
+                Line::from_iter([prefix.into(), span])
             }
         }
     }
@@ -170,8 +214,8 @@ impl StatefulWidget for History {
         if list_area.is_empty() {
             return;
         }
-        if state.selected().is_some_and(|s| s >= self.items.len()) {
-            state.select(Some(self.items.len() - 1));
+        if let Some(index) = state.selected() {
+            state.select(Some(index.max(1).min(self.items.len() - 1)));
         }
 
         let list_height = list_area.height as usize;

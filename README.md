@@ -34,8 +34,9 @@ Basic gameplay:
 
 ![Demo](images/demo.gif?raw=true)
 
-During game play, you can open the history explorer with the `!` key, and try
-out alternative lines of play by selecting a point in the history:
+During gameplay, you can open the history explorer with the `!` key.
+You can seek to a point in history, and experiment with alternative choices.
+If you want to override the robot implementation, you can use `@` to toggle robot autoplay.
 
 ![History demo](images/history.gif?raw=true)
 

@@ -152,6 +152,11 @@ impl RoundConfig {
         Self::new(dealer, deck).expect("deck is valid")
     }
 
+    /// Returns the dealer for this round.
+    pub fn dealer(&self) -> Seat {
+        self.dealer
+    }
+
     /// Validates the configuration.
     fn validate(self) -> Result<Self, RoundError> {
         let mut seen: HashSet<_> = HashSet::with_capacity(21);

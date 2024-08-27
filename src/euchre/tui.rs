@@ -25,6 +25,7 @@ use self::history::{History, HistoryState};
 use self::info::Info;
 use self::scoreboard::Scoreboard;
 
+use super::action::ActionData;
 use super::{
     Action, ActionType, Event, ExpectAction, Game, LogId, LoggingRound, Player, RawLog, Robot,
     Round, Seat,
@@ -148,6 +149,8 @@ pub struct Tui {
     game: Game<LoggingRound>,
     /// The robot implementation.
     robot: Robot,
+    /// Whether to auto-play as robots.
+    robot_autoplay: bool,
     /// An error message to display to the user.
     error: Option<String>,
     /// A debug message to display to the user.
@@ -164,6 +167,7 @@ impl Default for Tui {
             mode: Mode::Event(event),
             game,
             robot: Robot::default(),
+            robot_autoplay: true,
             error: None,
             debug: None,
             exit: false,
@@ -192,9 +196,12 @@ impl Tui {
             Mode::Hand(hand, state) => {
                 frame.render_stateful_widget(hand.clone(), areas.hand, state);
             }
+            Mode::ActionChoice(_, _) => {
+                let seat = round.next_action().map_or(HUMAN_SEAT, |e| e.seat);
+                self.render_hand_for_seat(seat, frame, areas.hand);
+            }
             Mode::History(_, _) => self.render_current_hand(frame, areas.hand),
-            Mode::Event(Event::Game(_) | Event::Round(_)) => (),
-            _ => self.render_hand_for_seat(HUMAN_SEAT, frame, areas.hand),
+            Mode::Event(_) => (),
         }
         if let Mode::ActionChoice(choice, state) = &mut self.mode {
             frame.render_stateful_widget(choice.clone(), areas.action, state);
@@ -246,6 +253,12 @@ impl Tui {
 
             // Quit
             (_, KeyCode::Char('q')) => self.exit = true,
+
+            // What would the robot do?
+            (Mode::Hand(_, _) | Mode::ActionChoice(_, _), KeyCode::Char('?')) => self.ask_robot(),
+
+            // Toggle robot autoplay
+            (_, KeyCode::Char('@')) => self.toggle_robot_autoplay(),
 
             // Event acknowledgement
             (Mode::Event(Event::Game(_)), _) => (),
@@ -327,7 +340,7 @@ impl Tui {
 
             // Handle round actions.
             if let Some(expect) = self.game.round().next_action() {
-                if expect.seat == HUMAN_SEAT {
+                if expect.seat == HUMAN_SEAT || !self.robot_autoplay {
                     self.await_user_action(expect);
                     break;
                 }
@@ -363,6 +376,42 @@ impl Tui {
         };
     }
 
+    /// Asks what the robot would do, displaying the result as a debug message.
+    fn ask_robot(&mut self) {
+        let round = self.game.round();
+        if let Some(expect) = round.next_action() {
+            let state = round.player_state(expect.seat);
+            let data = self.robot.take_action(state, expect.action);
+            let suggest = match data {
+                ActionData::Pass => "Pass".into(),
+                ActionData::Call { suit, alone: false } => format!("Call {suit}"),
+                ActionData::Call { suit, alone: true } => format!("Call {suit} alone"),
+                ActionData::Card { card } => card.to_string(),
+            };
+            self.debug = Some(format!("Robot suggests: {suggest}"));
+        }
+    }
+
+    /// Toggle robot autoplay.
+    fn toggle_robot_autoplay(&mut self) {
+        self.robot_autoplay = !self.robot_autoplay;
+
+        // If we're currently waiting for the user to take action on behalf of a robot player,
+        // advance the state machine automatically.
+        if self.robot_autoplay && matches!(self.mode, Mode::ActionChoice(_, _) | Mode::Hand(_, _)) {
+            self.game_step();
+        }
+
+        self.debug = Some(format!(
+            "Robot autoplay {}",
+            if self.robot_autoplay {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        ));
+    }
+
     /// Uses the robot to resolve the next action.
     fn play_as_robot(&mut self, expect: ExpectAction) {
         let round = self.game.round_mut();
@@ -375,8 +424,9 @@ impl Tui {
     /// Enters history browser mode.
     fn enter_history_mode(&mut self) {
         let round = self.game.round();
-        let history = History::new(round.log());
-        let index = history.position(round.cursor());
+        let cursor = round.cursor();
+        let history = History::new(cursor, round.log());
+        let index = history.position(cursor);
         self.mode = Mode::history(history, index);
     }
 
