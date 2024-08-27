@@ -41,10 +41,9 @@ out alternative lines of play by selecting a point in the history:
 
 ## To Do
 
-### Bugs
+### Chores
 
 - Improve test coverage.
-- History widget needs to be scrolly.
 
 ### Functionality
 

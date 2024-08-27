@@ -69,11 +69,16 @@ impl History {
     }
 
     fn get_item_bounds(&self, state: &HistoryState, height: usize) -> (usize, usize) {
-        let offset = state.offset().min(self.items.len().saturating_sub(1));
-        let first_index = offset;
-        let last_index = (offset + height).min(self.items.len().saturating_sub(1));
-        // TODO: selected must fall within the range (first, last).
-        (first_index, last_index)
+        let max = self.items.len().saturating_sub(1);
+        let delta = height.saturating_sub(1);
+        let offset = state.offset().min(max);
+        let first = offset;
+        let last = (offset + delta).min(max);
+        match state.selected() {
+            Some(index) if index < first => (index, (index + delta).min(max)),
+            Some(index) if index > last => (index.saturating_sub(delta), index),
+            _ => (first, last),
+        }
     }
 }
 
@@ -98,7 +103,6 @@ fn action_spans(action: Action) -> Vec<Span<'static>> {
             }
         }
         (ActionType::DealerDiscard, ActionData::Card { card }) => {
-            // TODO: Redact card in certain modes?
             spans.extend([" discarded ".into(), card.to_span()]);
         }
         (ActionType::Lead, ActionData::Card { card }) => {
