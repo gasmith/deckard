@@ -60,8 +60,8 @@ impl Suit {
     pub fn from_char(s: char) -> Option<Self> {
         let suit = match s {
             '♣' | '♧' | 'C' | 'c' => Suit::Club,
-            '♦' | '♢' | 'H' | 'h' => Suit::Heart,
-            '♥' | '♡' | 'D' | 'd' => Suit::Diamond,
+            '♥' | '♡' | 'H' | 'h' => Suit::Heart,
+            '♦' | '♢' | 'D' | 'd' => Suit::Diamond,
             '♠' | '♤' | 'S' | 's' => Suit::Spade,
             _ => return None,
         };
