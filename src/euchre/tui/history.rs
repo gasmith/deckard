@@ -1,8 +1,4 @@
 //! Widget for the history prompt
-//!
-//! TODO:
-//!  - Add a "deal" pseudo-item
-//!  - Tree structure!
 
 use std::collections::HashMap;
 use std::iter::FromIterator;
