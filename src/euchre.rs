@@ -9,6 +9,8 @@ mod round;
 mod seat;
 mod trick;
 mod tui;
+use std::path::Path;
+
 use self::action::{Action, ActionData, ActionType, ExpectAction};
 use self::card::{Card, Deck, Rank, Suit};
 use self::error::{PlayerError, RoundError};
@@ -73,8 +75,11 @@ pub fn cli_main() {
 }
 
 /// Runs the game in a rich terminal UI.
-pub fn tui_main() {
-    let tui = Tui::default();
+pub fn tui_main(log_path: Option<&Path>) {
+    let tui = match log_path {
+        Some(p) => Tui::from_round_file(p).unwrap(),
+        None => Tui::default(),
+    };
     let terminal = tui_init().unwrap();
     tui.run(terminal).unwrap();
     tui_restore().unwrap();

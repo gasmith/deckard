@@ -1,6 +1,6 @@
 //! Tree-structured log of actions for a round.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, io::Read, path::Path};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -61,6 +61,20 @@ impl<'a> From<&'a Log> for RawLog {
                 .cloned()
                 .collect(),
         }
+    }
+}
+impl RawLog {
+    pub fn from_json_reader<R: Read>(r: R) -> anyhow::Result<Self> {
+        Ok(serde_json::from_reader(r)?)
+    }
+
+    pub fn from_json_file(path: &Path) -> anyhow::Result<Self> {
+        let file = File::open(path)?;
+        RawLog::from_json_reader(file)
+    }
+
+    pub fn into_log(self) -> Log {
+        self.into()
     }
 }
 

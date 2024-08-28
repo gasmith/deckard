@@ -13,6 +13,8 @@ pub struct Game<R> {
     round: R,
     /// The current scores.
     score: HashMap<Team, u8>,
+    /// The target score.
+    target_score: u8,
 }
 
 impl<R> Default for Game<R>
@@ -20,12 +22,20 @@ where
     R: Round + From<RoundConfig>,
 {
     fn default() -> Self {
+        let round = R::from(RoundConfig::random());
+        Self::from(round)
+    }
+}
+
+impl<R> From<R> for Game<R> {
+    fn from(round: R) -> Self {
         Self {
-            round: RoundConfig::random().into(),
+            round,
             score: [(Team::NorthSouth, 0), (Team::EastWest, 0)]
                 .iter()
                 .copied()
                 .collect(),
+            target_score: 10,
         }
     }
 }
@@ -34,6 +44,12 @@ impl<R> Game<R>
 where
     R: Round,
 {
+    /// Sets the target score.
+    pub fn with_target_score(mut self, score: u8) -> Self {
+        self.target_score = score;
+        self
+    }
+
     /// Returns an immutable reference to the current round.
     pub fn round(&self) -> &R {
         &self.round
@@ -47,7 +63,7 @@ where
     /// Returns the winning team, if the game is over.
     pub fn winner(&self) -> Option<Team> {
         for (&team, &points) in &self.score {
-            if points >= 10 {
+            if points >= self.target_score {
                 return Some(team);
             }
         }

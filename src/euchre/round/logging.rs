@@ -33,6 +33,16 @@ impl<'a> From<&'a LoggingRound> for RawLog {
         RawLog::from(&value.log)
     }
 }
+impl From<Log> for LoggingRound {
+    fn from(log: Log) -> Self {
+        let round = log.config().clone().into();
+        Self {
+            log,
+            round,
+            cursor: None,
+        }
+    }
+}
 
 impl Round for LoggingRound {
     delegate! {

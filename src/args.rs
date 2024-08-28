@@ -1,5 +1,7 @@
 //! Command line arguments
 
+use std::path::PathBuf;
+
 use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Clone, Parser)]
@@ -12,6 +14,10 @@ pub struct Args {
     /// Which UI to use.
     #[arg(short, long)]
     pub ui: Option<Ui>,
+
+    /// Log file to load.
+    #[arg(short, long)]
+    pub load: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, ValueEnum, Default)]

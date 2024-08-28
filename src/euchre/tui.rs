@@ -3,6 +3,7 @@
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, stdout, Stdout};
+use std::path::Path;
 
 use ratatui::crossterm::event::KeyCode;
 use ratatui::crossterm::terminal::{
@@ -161,7 +162,11 @@ pub struct Tui {
 
 impl Default for Tui {
     fn default() -> Self {
-        let mut game: Game<LoggingRound> = Game::default();
+        Game::default().into()
+    }
+}
+impl From<Game<LoggingRound>> for Tui {
+    fn from(mut game: Game<LoggingRound>) -> Self {
         let event = game.round_mut().pop_event().expect("deal");
         Self {
             mode: Mode::Event(event),
@@ -176,6 +181,14 @@ impl Default for Tui {
 }
 
 impl Tui {
+    /// Loads a saved round from a file.
+    pub fn from_round_file(log_path: &Path) -> anyhow::Result<Self> {
+        let log = RawLog::from_json_file(log_path)?.into_log();
+        let round = LoggingRound::from(log);
+        let game = Game::from(round).with_target_score(1);
+        Ok(game.into())
+    }
+
     /// Runs the terminal UI until the user exits.
     pub fn run(mut self, mut terminal: Term) -> anyhow::Result<()> {
         while !self.exit {
