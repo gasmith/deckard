@@ -244,15 +244,18 @@ impl Tui {
 
         #[allow(clippy::match_same_arms)]
         match (&mut self.mode, key.code) {
-            // Save the game log
-            (_, KeyCode::Char('s')) => self.save_round(),
-
-            // Toggle history mode
+            // Quit, or exit history
             (Mode::History(_, _), KeyCode::Char('!' | 'q')) => self.game_step(),
+            (_, KeyCode::Char('q')) => self.exit = true,
+
+            // End of game
+            (Mode::Event(Event::Game(_)), _) => (),
+
+            // Enter history mode
             (_, KeyCode::Char('!')) => self.enter_history_mode(),
 
-            // Quit
-            (_, KeyCode::Char('q')) => self.exit = true,
+            // Save the game log
+            (_, KeyCode::Char('s')) => self.save_round(),
 
             // What would the robot do?
             (Mode::Hand(_, _) | Mode::ActionChoice(_, _), KeyCode::Char('?')) => self.ask_robot(),
@@ -261,7 +264,6 @@ impl Tui {
             (_, KeyCode::Char('@')) => self.toggle_robot_autoplay(),
 
             // Event acknowledgement
-            (Mode::Event(Event::Game(_)), _) => (),
             (Mode::Event(Event::Round(_)), _) => self.next_round(),
             (Mode::Event(_), _) => self.game_step(),
 
@@ -311,10 +313,14 @@ impl Tui {
         Ok(())
     }
 
-    /// Starts the next round of the game.
+    /// Starts the next round of the game, and checks to see if the game is over.
     fn next_round(&mut self) {
         self.game.next_round();
-        self.game_step();
+        if let Some(team) = self.game.winner() {
+            self.mode = Mode::event(Event::Game(team));
+        } else {
+            self.game_step();
+        }
     }
 
     /// Advances the state of the game until an event occurs, or the game is
@@ -322,19 +328,16 @@ impl Tui {
     /// of advancing to the next round, if the game is not over.
     fn game_step(&mut self) {
         loop {
-            // Drain round events before checking for end-of-round.
+            // Drain events.
             if let Some(event) = self.game.round_mut().pop_event() {
                 self.mode = Mode::event(event);
                 break;
             }
 
-            // Check for end of round & end of game.
+            // We may have missed the end-of-round event, because we dropped events in
+            // `seek_round_history`. Generate a synthetic event.
             if let Some(outcome) = self.game.round().outcome() {
-                if let Some(team) = self.game.winner() {
-                    self.mode = Mode::event(Event::Game(team));
-                } else {
-                    self.mode = Mode::event(Event::Round(outcome));
-                }
+                self.mode = Mode::event(Event::Round(outcome));
                 break;
             }
 
@@ -435,6 +438,7 @@ impl Tui {
         if let Err(e) = self.game.round_mut().seek(id) {
             self.error = Some(e.to_string());
         } else {
+            // Drop events.
             while self.game.round_mut().pop_event().is_some() {}
         }
     }
