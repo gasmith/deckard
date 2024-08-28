@@ -40,6 +40,16 @@ If you want to override the robot implementation, you can use `@` to toggle robo
 
 ![History demo](images/history.gif?raw=true)
 
+## Key Bindings
+
+- `←↑→↓` / `hjkl`: Cursor navigation. 
+- `↵` / `␣`: Select highlighted item.
+- `s`: Saves the current round to `euchre.json`.
+- `!`: Opens the history browser.
+- `@`: Toggles robot autoplay.
+- `?`: What would the robot do?
+- `q`: Quits the game (or closes the history browser).
+
 ## To Do
 
 ### Chores
