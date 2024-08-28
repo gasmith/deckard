@@ -297,34 +297,3 @@ fn test_log_serde() {
     let de: RawLog = serde_json::from_str(&ser).unwrap();
     assert_eq!(raw, de);
 }
-
-#[test]
-fn test_traverse() {
-    let log = log_fixture();
-    let nodes: Vec<_> = log.traverse().map(|n| n.id).collect();
-    assert_eq!(nodes, (0..=14).collect::<Vec<_>>());
-    let nodes: Vec<_> = log
-        .traverse()
-        .map(|n| (n.id, n.sibling, n.last_sibling, n.leaf))
-        .collect();
-    assert_eq!(
-        nodes,
-        vec![
-            (0, true, false, false),
-            (1, true, false, false),
-            (2, false, false, false),
-            (3, false, false, false),
-            (4, false, false, true),
-            (5, true, true, false),
-            (6, false, false, false),
-            (7, true, false, false),
-            (8, false, false, false),
-            (9, false, false, false),
-            (10, false, false, true),
-            (11, true, true, false),
-            (12, false, false, false),
-            (13, false, false, true),
-            (14, true, true, true),
-        ]
-    );
-}

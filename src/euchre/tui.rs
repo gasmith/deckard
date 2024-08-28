@@ -426,7 +426,7 @@ impl Tui {
         let round = self.game.round();
         let cursor = round.cursor();
         let history = History::new(cursor, round.log());
-        let index = history.position(cursor);
+        let index = history.cursor_position();
         self.mode = Mode::history(history, index);
     }
 

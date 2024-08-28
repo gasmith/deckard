@@ -1,7 +1,6 @@
 //! Tree-structured log of actions for a round.
 
-use std::collections::{HashMap, VecDeque};
-use std::marker::PhantomData;
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -16,13 +15,13 @@ pub type Id = u32;
 
 /// A node in the tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct ActionNode {
+pub struct ActionNode {
     /// The ID for this node.
-    id: Id,
+    pub id: Id,
     /// The parent of this node.
-    parent: Option<Id>,
+    pub parent: Option<Id>,
     /// The action that this node represents.
-    action: Action,
+    pub action: Action,
 }
 impl ActionNode {
     /// Creates a new [`ActionNode`].
@@ -150,78 +149,8 @@ impl Log {
         Ok(trace)
     }
 
-    /// Returns an iterator to traverse the tree in preorder.
-    pub fn traverse(&self) -> Traverse<'_> {
-        Traverse::new(self)
-    }
-}
-
-/// A node in the pre-order traversal of the tree.
-pub struct TraverseNode<'a> {
-    /// The node ID.
-    pub id: Id,
-    /// The action this node represents.
-    pub action: Action,
-    /// The parent of this node.
-    pub parent: Option<Id>,
-    /// Set to `true` if the node has other siblings.
-    pub sibling: bool,
-    /// Set to `true` if the node has other siblings, and this is the last one in the traversal.
-    pub last_sibling: bool,
-    /// Set to `true` if this node has no children.
-    pub leaf: bool,
-    /// Binds a lifetime to the `&`[`Log`] over which we're iterating.
-    phantom: PhantomData<&'a ()>,
-}
-
-/// Iterator state for pre-order traversal of the tree.
-pub struct Traverse<'a> {
-    /// The log we're traversing.
-    log: &'a Log,
-    /// A queue of nodes to traverse.
-    queue: VecDeque<Id>,
-}
-
-impl<'a> Iterator for Traverse<'a> {
-    type Item = TraverseNode<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let id = self.queue.pop_front()?;
-        let action = self.log.actions.get(&id).expect("consistency");
-        let siblings = self.log.children.get(&action.parent).expect("consistency");
-        let (sibling, last_sibling) = if siblings.len() > 1 {
-            (true, siblings.iter().max().is_some_and(|m| *m == id))
-        } else {
-            (false, false)
-        };
-        let children = self.log.children.get(&Some(id));
-        if let Some(children) = children {
-            for id in children.iter().sorted_unstable().rev() {
-                self.queue.push_front(*id);
-            }
-        }
-        Some(TraverseNode {
-            id,
-            action: action.action,
-            parent: action.parent,
-            sibling,
-            last_sibling,
-            leaf: children.is_none(),
-            phantom: PhantomData,
-        })
-    }
-}
-
-impl<'a> Traverse<'a> {
-    /// Creates a new [`Traverse`] iterator.
-    fn new(log: &'a Log) -> Self {
-        let queue = log
-            .children
-            .get(&None)
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        Self { log, queue }
+    /// Returns an iterator over the nodes in the log.
+    pub fn action_nodes(&self) -> impl Iterator<Item = &ActionNode> {
+        self.actions.values()
     }
 }

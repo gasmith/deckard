@@ -7,64 +7,143 @@ use ratatui::layout::Offset;
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, ListState, Padding, Widget};
+use tree::PreorderNode;
 
 use crate::euchre::{Action, ActionData, ActionType, Log, LogId, Seat};
 
-pub type HistoryState = ListState;
-
-#[derive(Debug, Clone)]
-pub struct History {
-    items: Vec<HistoryItem>,
-}
+mod tree;
+use self::tree::{Id as TreeId, Tree};
 
 const VERT: char = '│';
 const VERT_RIGHT: char = '├';
 const ARC_UP_RIGHT: char = '╰';
 
+pub type HistoryState = ListState;
+
+/// A widget for displaying a tree-structured history of actions.
+#[derive(Debug, Clone)]
+pub struct History {
+    items: Vec<Prefixed<HistoryItem>>,
+}
+
+/// A history item.
+#[derive(Debug, Clone)]
+enum HistoryItem {
+    /// The deal. Always first.
+    Deal { dealer: Seat },
+    /// Actions that have been recorded in the log.
+    Action {
+        id: LogId,
+        parent: Option<LogId>,
+        action: Action,
+    },
+    /// The cursor position at the time the history widget was opened.
+    Cursor { parent: Option<LogId> },
+}
+
+impl HistoryItem {
+    /// The parent log ID for this node, if applicable
+    fn parent(&self) -> Option<LogId> {
+        match self {
+            Self::Deal { .. } => None,
+            Self::Action { parent, .. } | Self::Cursor { parent, .. } => *parent,
+        }
+    }
+}
+
+/// Helper function to build a tree out of a log.
+fn build_tree(cursor: Option<LogId>, log: &Log) -> Tree<HistoryItem> {
+    let mut builder = Tree::builder();
+    let mut id_map: HashMap<Option<LogId>, TreeId> = HashMap::new();
+    let mut parents: Vec<(TreeId, Option<LogId>)> = vec![];
+
+    // Always insert the `Deal` node.
+    let dealer = log.config().dealer();
+    let root = builder.insert(HistoryItem::Deal { dealer });
+    id_map.insert(None, root);
+
+    // Insert all actions.
+    for node in log.action_nodes() {
+        let id = builder.insert(HistoryItem::Action {
+            id: node.id,
+            parent: node.parent,
+            action: node.action,
+        });
+        parents.push((id, node.parent));
+        id_map.insert(Some(node.id), id);
+    }
+
+    // Always insert the `Cursor` node.
+    let id = builder.insert(HistoryItem::Cursor { parent: cursor });
+    parents.push((id, cursor));
+
+    // Now that all nodes have been assigned IDs, we can set the parents.
+    for (id, parent) in parents {
+        let parent = *id_map.get(&parent).expect("consistency");
+        builder.set_parent(id, parent);
+    }
+
+    builder.into()
+}
+
+/// Helper structure for assigning prefixes to nodes in the tree.
+#[derive(Default)]
+struct PrefixHelper {
+    /// The base prefix for a node, indexed by parent node.
+    base: HashMap<LogId, String>,
+}
+impl PrefixHelper {
+    /// Look up the base prefix for a parent node.
+    fn base(&self, id: &Option<LogId>) -> &str {
+        id.and_then(|id| self.base.get(&id))
+            .map_or("", |s| s.as_str())
+    }
+
+    /// Calculate the prefix for a node, and update the base prefix for its children.
+    fn prefix(&mut self, node: &PreorderNode<'_, HistoryItem>) -> String {
+        let (id, parent) = match node.data {
+            HistoryItem::Deal { .. } => return String::new(),
+            HistoryItem::Action { id, parent, .. } => (Some(*id), parent),
+            HistoryItem::Cursor { parent } => (None, parent),
+        };
+        let base = self.base(parent);
+        let (prefix, next_base) = if node.last_sibling {
+            (format!("{base}{ARC_UP_RIGHT} "), Some(format!("{base}  ")))
+        } else if node.sibling {
+            (
+                format!("{base}{VERT_RIGHT} "),
+                Some(format!("{base}{VERT} ")),
+            )
+        } else if node.leaf {
+            (format!("{base}{ARC_UP_RIGHT} "), None)
+        } else {
+            (format!("{base}{VERT} "), Some(base.to_string()))
+        };
+        if let Some((id, base)) = id.zip(next_base) {
+            self.base.insert(id, base);
+        }
+        prefix
+    }
+}
+
 impl History {
+    /// Creates a new history widget.
     pub fn new(cursor: Option<LogId>, log: &Log) -> Self {
-        let dealer = log.config().dealer();
-        let mut items = vec![HistoryItem::Deal { dealer }];
-
-        if cursor.is_none() {
-            // Should be VERT_RIGHT if there are siblings.
-            items.push(HistoryItem::cursor(cursor, format!("{ARC_UP_RIGHT} ")));
+        let tree = build_tree(cursor, log);
+        let mut items = vec![];
+        let mut helper = PrefixHelper::default();
+        for node in tree.preorder() {
+            let prefix = helper.prefix(&node);
+            items.push(Prefixed::new(prefix, node.data.clone()));
         }
-
-        let mut child_prefixes: HashMap<LogId, String> = HashMap::new();
-        for node in log.traverse() {
-            let mut prefix = node
-                .parent
-                .and_then(|id| child_prefixes.get(&id))
-                .cloned()
-                .unwrap_or_default();
-            let (char, child_prefix) = if node.last_sibling {
-                (ARC_UP_RIGHT, format!("{prefix}  "))
-            } else if node.sibling {
-                (VERT_RIGHT, format!("{prefix}{VERT} "))
-            } else if node.leaf {
-                (ARC_UP_RIGHT, format!("{prefix}  "))
-            } else {
-                (VERT, prefix.clone())
-            };
-            prefix.push(char);
-            prefix.push(' ');
-            child_prefixes.insert(node.id, child_prefix);
-            items.push(HistoryItem::action(node.parent, node.action, &prefix));
-
-            if cursor.is_some_and(|id| id == node.id) {
-                let child_prefix = child_prefixes.get(&node.id).expect("just inserted");
-                // Should be VERT_RIGHT if there are siblings.
-                let prefix = format!("{child_prefix}{ARC_UP_RIGHT} ");
-                items.push(HistoryItem::cursor(cursor, prefix));
-            }
-        }
-
         Self { items }
     }
 
-    pub fn position(&self, id: Option<LogId>) -> Option<usize> {
-        self.items.iter().position(|item| item.parent() == id)
+    /// Returns the index of the cursor item.
+    pub fn cursor_position(&self) -> Option<usize> {
+        self.items
+            .iter()
+            .position(|item| matches!(item.inner(), HistoryItem::Cursor { .. }))
     }
 
     /// Returns the selected log entry in the history. Note that the log entry pertaining to the
@@ -74,9 +153,11 @@ impl History {
         state
             .selected()
             .and_then(|idx| self.items.get(idx))
-            .map(HistoryItem::parent)
+            .map(|item| item.inner().parent())
     }
 
+    /// Determines the indexes of the first and last item to be displayed, given the height
+    /// of the rendering area.
     fn get_item_bounds(&self, state: &HistoryState, height: usize) -> (usize, usize) {
         const PADDING: usize = 1;
         let max = self.items.len().saturating_sub(1);
@@ -85,11 +166,11 @@ impl History {
         let first = offset;
         let last = (offset + delta).min(max);
         match state.selected() {
-            Some(index) if index <= first => {
+            Some(index) if index < first + PADDING => {
                 let first = index.saturating_sub(PADDING);
                 (first, (first + delta).min(max))
             }
-            Some(index) if index >= last => {
+            Some(index) if index + PADDING > last => {
                 let last = (index + PADDING).min(max);
                 (last.saturating_sub(delta), last)
             }
@@ -98,22 +179,7 @@ impl History {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum HistoryItem {
-    Deal {
-        dealer: Seat,
-    },
-    Action {
-        parent: Option<LogId>,
-        action: Action,
-        prefix: String,
-    },
-    Cursor {
-        parent: Option<LogId>,
-        prefix: String,
-    },
-}
-
+/// Helper function for translating an [`Action`] into a collection of [`Span`]s.
 fn action_spans(action: Action) -> Vec<Span<'static>> {
     let mut spans = vec![Span::from(action.seat.to_string())];
     match (action.action, action.data) {
@@ -138,55 +204,46 @@ fn action_spans(action: Action) -> Vec<Span<'static>> {
     spans
 }
 
-impl HistoryItem {
-    pub fn action<S: Into<String>>(parent: Option<LogId>, action: Action, prefix: S) -> Self {
-        Self::Action {
-            parent,
-            action,
-            prefix: prefix.into(),
-        }
-    }
+trait IntoSpans {
+    /// Converts the item into a list of spans.
+    fn into_spans(self) -> Vec<Span<'static>>;
+}
 
-    pub fn cursor<S: Into<String>>(parent: Option<LogId>, prefix: S) -> Self {
-        Self::Cursor {
-            parent,
-            prefix: prefix.into(),
-        }
-    }
-
-    pub fn parent(&self) -> Option<LogId> {
+impl IntoSpans for HistoryItem {
+    fn into_spans(self) -> Vec<Span<'static>> {
         match self {
-            Self::Deal { .. } => None,
-            Self::Action { parent, .. } | Self::Cursor { parent, .. } => *parent,
+            Self::Deal { dealer } => vec![format!("{dealer} dealt").into()],
+            Self::Action { action, .. } => action_spans(action),
+            Self::Cursor { .. } => vec!["(you are here)".into()],
         }
     }
+}
 
-    pub fn line(self, selected: bool) -> Line<'static> {
-        match self {
-            Self::Deal { dealer } => {
-                let line = Line::from(format!("{dealer} dealt"));
-                if selected {
-                    line.reversed()
-                } else {
-                    line
-                }
-            }
-            Self::Action { action, prefix, .. } => {
-                let mut spans = action_spans(action);
-                if selected {
-                    spans = spans.into_iter().map(Span::reversed).collect();
-                }
-                spans.insert(0, Span::raw(prefix));
-                Line::from(spans)
-            }
-            Self::Cursor { prefix, .. } => {
-                let mut span = Span::raw("(you are here)");
-                if selected {
-                    span = span.reversed();
-                }
-                Line::from_iter([prefix.into(), span])
-            }
+/// A wrapper for attaching a prefix to a list item.
+#[derive(Debug, Clone)]
+struct Prefixed<T> {
+    prefix: String,
+    inner: T,
+}
+
+impl<T> Prefixed<T> {
+    fn new(prefix: String, inner: T) -> Self {
+        Self { prefix, inner }
+    }
+
+    fn inner(&self) -> &T {
+        &self.inner
+    }
+}
+
+impl<T: IntoSpans> Prefixed<T> {
+    fn into_line(self, selected: bool) -> Line<'static> {
+        let mut spans = self.inner.into_spans();
+        if selected {
+            spans = spans.into_iter().map(Span::reversed).collect()
         }
+        spans.insert(0, Span::raw(self.prefix));
+        Line::from_iter(spans)
     }
 }
 
@@ -227,7 +284,7 @@ impl StatefulWidget for History {
             .take(last_index - first_index + 1)
         {
             let selected = state.selected().is_some_and(|s| s == i);
-            let line = item.line(selected);
+            let line = item.into_line(selected);
             line.render(item_area, buf);
             item_area = item_area.offset(Offset { x: 0, y: 1 });
         }
