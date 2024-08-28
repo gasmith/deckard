@@ -4,6 +4,9 @@ use std::collections::{HashMap, VecDeque};
 
 use itertools::Itertools;
 
+#[cfg(test)]
+mod test;
+
 pub type Id = u32;
 
 /// A builder for constructing the tree.
@@ -32,6 +35,11 @@ impl<T> Builder<T> {
     pub fn set_parent(&mut self, node: Id, parent: Id) {
         assert!(self.nodes.contains_key(&parent));
         self.nodes.get_mut(&node).unwrap().parent = Some(parent);
+    }
+
+    /// Builds the tree.
+    pub fn build(self) -> Tree<T> {
+        self.into()
     }
 }
 impl<T> From<Builder<T>> for Tree<T> {

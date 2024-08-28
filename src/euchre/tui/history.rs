@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
+use itertools::Itertools;
 use ratatui::layout::Offset;
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
@@ -62,8 +63,8 @@ fn build_tree(cursor: Option<LogId>, log: &Log) -> Tree<HistoryItem> {
     let root = builder.insert(HistoryItem::Deal { dealer });
     id_map.insert(None, root);
 
-    // Insert all actions.
-    for node in log.action_nodes() {
+    // Insert all actions, sorted by sequence number.
+    for node in log.action_nodes().sorted_unstable_by_key(|n| n.id) {
         let id = builder.insert(HistoryItem::Action {
             id: node.id,
             parent: node.parent,
@@ -83,7 +84,7 @@ fn build_tree(cursor: Option<LogId>, log: &Log) -> Tree<HistoryItem> {
         builder.set_parent(id, parent);
     }
 
-    builder.into()
+    builder.build()
 }
 
 /// Helper structure for assigning prefixes to nodes in the tree.
