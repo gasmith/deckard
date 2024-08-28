@@ -36,6 +36,7 @@ pub struct RawLog {
     /// The initial configuration.
     config: RoundConfig,
     /// An unordered list of nodes in the action tree.
+    #[serde(default)]
     actions: Vec<ActionNode>,
 }
 impl From<Log> for RawLog {
@@ -65,7 +66,10 @@ impl<'a> From<&'a Log> for RawLog {
 }
 impl RawLog {
     pub fn from_json_reader<R: Read>(r: R) -> anyhow::Result<Self> {
-        Ok(serde_json::from_reader(r)?)
+        let mut log: RawLog = serde_json::from_reader(r)?;
+        log.config.validate()?;
+        log.config.canonicalize();
+        Ok(log)
     }
 
     pub fn from_json_file(path: &Path) -> anyhow::Result<Self> {

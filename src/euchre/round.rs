@@ -138,7 +138,10 @@ impl RoundConfig {
             .map(|seat| (seat, deck.take(5)))
             .collect();
         let top = deck.take(1)[0];
-        Self { dealer, hands, top }.validate()
+        let mut round = Self { dealer, hands, top };
+        round.validate()?;
+        round.canonicalize();
+        Ok(round)
     }
 
     /// Creates a [`RoundConfig`] with a random dealer and a shuffled deck.
@@ -157,8 +160,8 @@ impl RoundConfig {
         self.dealer
     }
 
-    /// Validates the configuration.
-    fn validate(self) -> Result<Self, RoundError> {
+    /// Validates and canonicalizes the configuration.
+    pub fn validate(&self) -> Result<(), RoundError> {
         let mut seen: HashSet<_> = HashSet::with_capacity(21);
         seen.insert(self.top);
         for hand in self.hands.values() {
@@ -168,9 +171,16 @@ impl RoundConfig {
             seen.extend(hand);
         }
         if seen.len() == 21 {
-            Ok(self)
+            Ok(())
         } else {
             Err(RoundError::DuplicateCard)
+        }
+    }
+
+    /// Canonicalizes the configuration.
+    pub fn canonicalize(&mut self) {
+        for hand in self.hands.values_mut() {
+            hand.sort_unstable_by_key(|c| (c.suit, c.rank));
         }
     }
 }
