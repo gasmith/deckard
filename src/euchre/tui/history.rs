@@ -94,7 +94,7 @@ struct PrefixHelper {
 }
 impl PrefixHelper {
     /// Look up the base prefix for a parent node.
-    fn base(&self, id: &Option<LogId>) -> &str {
+    fn base(&self, id: Option<LogId>) -> &str {
         id.and_then(|id| self.base.get(&id))
             .map_or("", |s| s.as_str())
     }
@@ -103,8 +103,8 @@ impl PrefixHelper {
     fn prefix(&mut self, node: &PreorderNode<'_, HistoryItem>) -> String {
         let (id, parent) = match node.data {
             HistoryItem::Deal { .. } => return String::new(),
-            HistoryItem::Action { id, parent, .. } => (Some(*id), parent),
-            HistoryItem::Cursor { parent } => (None, parent),
+            HistoryItem::Action { id, parent, .. } => (Some(*id), *parent),
+            HistoryItem::Cursor { parent } => (None, *parent),
         };
         let base = self.base(parent);
         let (prefix, next_base) = if node.last_sibling {
@@ -240,7 +240,7 @@ impl<T: IntoSpans> Prefixed<T> {
     fn into_line(self, selected: bool) -> Line<'static> {
         let mut spans = self.inner.into_spans();
         if selected {
-            spans = spans.into_iter().map(Span::reversed).collect()
+            spans = spans.into_iter().map(Span::reversed).collect();
         }
         spans.insert(0, Span::raw(self.prefix));
         Line::from_iter(spans)

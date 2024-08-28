@@ -15,7 +15,7 @@ impl<T> Default for Builder<T> {
     fn default() -> Self {
         Self {
             next_id: Default::default(),
-            nodes: Default::default(),
+            nodes: HashMap::default(),
         }
     }
 }
