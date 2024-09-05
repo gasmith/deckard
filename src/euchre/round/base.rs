@@ -138,7 +138,13 @@ impl BaseRound {
                 .get_mut(&self.dealer)
                 .expect("hands populated")
                 .push(self.top);
-            self.next_action = Some(ExpectAction::new(self.dealer, ActionType::DealerDiscard));
+            // If some player other than the dealer bids top alone, the top card is simply buried
+            // with the rest of the dealer's hand - no need to discard.
+            if alone && maker != self.dealer {
+                self.first_trick();
+            } else {
+                self.next_action = Some(ExpectAction::new(self.dealer, ActionType::DealerDiscard));
+            }
             self.events.push_back(Event::Call(contract));
             Ok(())
         } else {
