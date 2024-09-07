@@ -4,11 +4,10 @@ use std::convert::{TryFrom, TryInto};
 use std::{fmt::Display, str::FromStr};
 
 use ansi_term::ANSIString;
-use rand::distributions::{Distribution, Standard};
-use rand::seq::SliceRandom;
 use ratatui::text::Span;
 use serde::{Deserialize, Serialize};
 
+use crate::deck;
 use crate::french;
 pub use crate::french::Suit;
 
@@ -210,34 +209,11 @@ impl Card {
 }
 
 /// A euchre deck.
-#[derive(Debug, Clone)]
-pub struct Deck {
-    cards: Vec<Card>,
-}
+pub type Deck = deck::Deck<Card>;
 impl Default for Deck {
     fn default() -> Self {
-        let cards = itertools::iproduct!(Rank::all_ranks(), Suit::all_suits())
+        itertools::iproduct!(Rank::all_ranks(), Suit::all_suits())
             .map(|(&rank, &suit)| Card { rank, suit })
-            .collect();
-        Self { cards }
-    }
-}
-impl Distribution<Deck> for Standard {
-    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> Deck {
-        let mut deck = Deck::default();
-        deck.cards.shuffle(rng);
-        deck
-    }
-}
-impl Deck {
-    /// The number of cards remaining in the deck.
-    pub fn len(&self) -> usize {
-        self.cards.len()
-    }
-
-    /// Removes a card from the deck.
-    pub fn take(&mut self, n: usize) -> Vec<Card> {
-        let idx = self.cards.len().saturating_sub(n);
-        self.cards.split_off(idx)
+            .collect()
     }
 }

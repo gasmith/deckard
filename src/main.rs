@@ -3,6 +3,7 @@
 use clap::Parser;
 
 mod args;
+mod deck;
 mod euchre;
 mod french;
 use self::args::{Args, Game, Ui};
