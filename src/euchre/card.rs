@@ -55,6 +55,11 @@ impl TryFrom<char> for Rank {
         french::Rank::try_from(c)?.try_into()
     }
 }
+impl Display for Rank {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        french::Rank::from(*self).fmt(f)
+    }
+}
 
 impl Rank {
     /// Returns an array of all ranks, in no particular order.
@@ -70,12 +75,6 @@ impl Rank {
         &RANKS
     }
 }
-impl Display for Rank {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        french::Rank::from(*self).fmt(f)
-    }
-}
-
 /// A euchre card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Card {
@@ -132,6 +131,7 @@ impl<'de> Deserialize<'de> for Card {
             .map_err(|()| serde::de::Error::custom("not a euchre card"))
     }
 }
+
 impl Card {
     /// Creates a new [`Card`].
     pub fn new(rank: Rank, suit: Suit) -> Self {
