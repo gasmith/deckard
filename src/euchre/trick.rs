@@ -97,16 +97,17 @@ impl Trick {
 
 #[cfg(test)]
 mod test {
+    use std::convert::{TryFrom, TryInto};
+
     use super::*;
-    use crate::euchre::Rank;
 
     fn trick(trump: char, cards: &[&str]) -> Trick {
-        let trump = Suit::from_char(trump).unwrap();
+        let trump = Suit::try_from(trump).unwrap();
         let mut cards = cards.iter().map(|s| {
             let mut chars = s.chars();
-            let seat = chars.next().and_then(Seat::from_char).unwrap();
-            let rank = chars.next().and_then(Rank::from_char).unwrap();
-            let suit = chars.next().and_then(Suit::from_char).unwrap();
+            let seat = chars.next().unwrap().try_into().unwrap();
+            let rank = chars.next().unwrap().try_into().unwrap();
+            let suit = chars.next().unwrap().try_into().unwrap();
             assert!(chars.next().is_none());
             (seat, Card { rank, suit })
         });
@@ -128,7 +129,7 @@ mod test {
         fn case(cards: &[&str], expect: char) -> Case {
             Case {
                 trick: trick('H', cards),
-                expect: Seat::from_char(expect).unwrap(),
+                expect: expect.try_into().unwrap(),
             }
         }
 

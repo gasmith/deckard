@@ -1,6 +1,6 @@
 //! Table position.
 
-use std::fmt::Display;
+use std::{convert::TryFrom, fmt::Display};
 
 use rand::distributions::{Distribution, Standard};
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,20 @@ impl Distribution<Seat> for Standard {
     }
 }
 
+impl TryFrom<char> for Seat {
+    type Error = ();
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        Ok(match c {
+            'N' | 'n' => Seat::North,
+            'E' | 'e' => Seat::East,
+            'S' | 's' => Seat::South,
+            'W' | 'w' => Seat::West,
+            _ => return Err(()),
+        })
+    }
+}
+
 impl Seat {
     /// All possible table positions, in clockwise order.
     pub fn all_seats() -> &'static [Seat; 4] {
@@ -45,19 +59,6 @@ impl Seat {
     /// The team for this table position.
     pub fn team(self) -> Team {
         Team::from(self)
-    }
-
-    /// Parses table position from a character.
-    #[cfg(test)]
-    pub fn from_char(s: char) -> Option<Self> {
-        let dir = match s {
-            'N' | 'n' => Seat::North,
-            'E' | 'e' => Seat::East,
-            'S' | 's' => Seat::South,
-            'W' | 'w' => Seat::West,
-            _ => return None,
-        };
-        Some(dir)
     }
 
     /// Returns an abbreviated name for the table position.

@@ -1,15 +1,15 @@
 //! Euchre deck.
 
-use core::fmt;
+use std::convert::{TryFrom, TryInto};
 use std::{fmt::Display, str::FromStr};
 
 use ansi_term::ANSIString;
 use rand::distributions::{Distribution, Standard};
 use rand::seq::SliceRandom;
 use ratatui::text::Span;
-use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
 
+use crate::french;
 pub use crate::french::Suit;
 
 /// Euchre card rank.
@@ -22,6 +22,41 @@ pub enum Rank {
     King,
     Ace,
 }
+impl From<Rank> for french::Rank {
+    fn from(r: Rank) -> Self {
+        match r {
+            Rank::Nine => french::Rank::Nine,
+            Rank::Ten => french::Rank::Ten,
+            Rank::Jack => french::Rank::Jack,
+            Rank::Queen => french::Rank::Queen,
+            Rank::King => french::Rank::King,
+            Rank::Ace => french::Rank::Ace,
+        }
+    }
+}
+impl TryFrom<french::Rank> for Rank {
+    type Error = ();
+
+    fn try_from(r: french::Rank) -> Result<Self, Self::Error> {
+        Ok(match r {
+            french::Rank::Nine => Rank::Nine,
+            french::Rank::Ten => Rank::Ten,
+            french::Rank::Jack => Rank::Jack,
+            french::Rank::Queen => Rank::Queen,
+            french::Rank::King => Rank::King,
+            french::Rank::Ace => Rank::Ace,
+            _ => return Err(()),
+        })
+    }
+}
+impl TryFrom<char> for Rank {
+    type Error = ();
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        french::Rank::try_from(c)?.try_into()
+    }
+}
+
 impl Rank {
     /// Returns an array of all ranks, in no particular order.
     pub fn all_ranks() -> &'static [Rank] {
@@ -35,32 +70,10 @@ impl Rank {
         ];
         &RANKS
     }
-
-    /// Parses a rank from a character.
-    pub fn from_char(s: char) -> Option<Self> {
-        let suit = match s {
-            '9' => Rank::Nine,
-            'T' | 't' => Rank::Ten,
-            'J' | 'j' => Rank::Jack,
-            'Q' | 'q' => Rank::Queen,
-            'K' | 'k' => Rank::King,
-            'A' | 'a' => Rank::Ace,
-            _ => return None,
-        };
-        Some(suit)
-    }
 }
 impl Display for Rank {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let sym = match self {
-            Rank::Nine => "9",
-            Rank::Ten => "T",
-            Rank::Jack => "J",
-            Rank::Queen => "Q",
-            Rank::King => "K",
-            Rank::Ace => "A",
-        };
-        f.write_str(sym)
+        french::Rank::from(*self).fmt(f)
     }
 }
 
@@ -72,23 +85,34 @@ pub struct Card {
     /// Card suit.
     pub suit: Suit,
 }
+impl From<Card> for french::Card {
+    fn from(card: Card) -> Self {
+        french::Card {
+            rank: card.rank.into(),
+            suit: card.suit,
+        }
+    }
+}
+impl TryFrom<french::Card> for Card {
+    type Error = ();
+
+    fn try_from(card: french::Card) -> Result<Self, Self::Error> {
+        Ok(Card {
+            rank: card.rank.try_into()?,
+            suit: card.suit,
+        })
+    }
+}
 impl Display for Card {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.rank, self.suit)
+        french::Card::from(*self).fmt(f)
     }
 }
 impl FromStr for Card {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut chars = s.chars();
-        let rank = chars.next().and_then(Rank::from_char).ok_or(())?;
-        let suit = chars.next().and_then(Suit::from_char).ok_or(())?;
-        if chars.next().is_none() {
-            Ok(Card { rank, suit })
-        } else {
-            Err(())
-        }
+        french::Card::from_str(s)?.try_into()
     }
 }
 impl Serialize for Card {
@@ -104,19 +128,9 @@ impl<'de> Deserialize<'de> for Card {
     where
         D: serde::Deserializer<'de>,
     {
-        struct CardVisitor;
-        impl<'de> Visitor<'de> for CardVisitor {
-            type Value = Card;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a card")
-            }
-
-            fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
-                Card::from_str(value).map_err(|()| E::custom("invalid card"))
-            }
-        }
-        deserializer.deserialize_str(CardVisitor)
+        let card = french::Card::deserialize(deserializer)?;
+        card.try_into()
+            .map_err(|()| serde::de::Error::custom("not a euchre card"))
     }
 }
 impl Card {
